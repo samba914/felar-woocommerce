@@ -274,13 +274,24 @@ final class Felar_Admin {
 		wp_send_json_success( $this->import->etat() );
 	}
 
-	/** L'avancement de l'import. */
+	/**
+	 * L'avancement de l'import.
+	 *
+	 * Le compte des références en attente n'est fait qu'une fois l'import terminé :
+	 * cet écran s'interroge toutes les quatre secondes, et compter à chaque passage
+	 * relancerait une requête sur tout le catalogue pour un chiffre qui bouge encore.
+	 * L'écran garde alors le dernier connu, ce qui est exactement ce qu'il faut.
+	 */
 	public function etat() {
 		$this->verrou();
+		$import = $this->import->etat();
+
 		wp_send_json_success(
 			array(
-				'import'     => $this->import->etat(),
-				'references' => $this->references->combien_en_attente(),
+				'import'     => $import,
+				'references' => ( null !== $import && 'en_cours' === $import['statut'] )
+					? null
+					: $this->references->combien_en_attente(),
 			)
 		);
 	}
