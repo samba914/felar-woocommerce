@@ -1,0 +1,217 @@
+/*
+ * L'écran de Felar Connect.
+ *
+ * Une colonne en dessous de 782 px — la borne où WordPress lui-même passe en
+ * affichage tactile. Un marchand branche sa boutique depuis son téléphone aussi
+ * souvent que depuis son bureau ; deux colonnes de 190 px ne se lisent pas.
+ */
+
+.felar-connect .felar-chapeau {
+	max-width: 46rem;
+	font-size: 14px;
+	color: #50575e;
+}
+
+.felar-connect .felar-onglets {
+	margin-bottom: 1.25rem;
+}
+
+.felar-grille {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(23rem, 1fr));
+	gap: 1.25rem;
+	align-items: start;
+}
+
+.felar-carte {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	padding: 1.25rem;
+}
+
+.felar-carte h2 {
+	margin-top: 0;
+	font-size: 1.05rem;
+}
+
+.felar-carte h3 {
+	font-size: 0.95rem;
+	margin-bottom: 0.35rem;
+}
+
+.felar-large {
+	max-width: 100%;
+}
+
+.felar-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: center;
+	margin: 1rem 0 0.5rem;
+}
+
+.felar-avance summary {
+	cursor: pointer;
+	color: #2271b1;
+}
+
+.felar-faits {
+	width: 100%;
+	border-collapse: collapse;
+	margin-top: 1rem;
+}
+
+.felar-faits th,
+.felar-faits td {
+	text-align: left;
+	vertical-align: top;
+	padding: 0.4rem 0.6rem 0.4rem 0;
+	border-bottom: 1px solid #f0f0f1;
+	font-size: 13px;
+}
+
+.felar-faits th {
+	width: 11rem;
+	font-weight: 600;
+	color: #50575e;
+}
+
+.felar-liste {
+	margin: 0.5rem 0 0 1.1rem;
+	list-style: disc;
+	font-size: 13px;
+}
+
+.felar-liste li {
+	margin-bottom: 0.4rem;
+}
+
+.felar-resultat:empty,
+.felar-rapport:empty,
+.felar-import:empty {
+	display: none;
+}
+
+.felar-resultat,
+.felar-rapport,
+.felar-import {
+	margin-top: 1rem;
+	font-size: 13px;
+}
+
+.felar-message {
+	border-left: 4px solid #72aee6;
+	background: #f6f7f7;
+	padding: 0.7rem 0.9rem;
+	margin: 0 0 0.75rem;
+}
+
+.felar-message.felar-mal {
+	border-left-color: #d63638;
+}
+
+.felar-message.felar-bien {
+	border-left-color: #00a32a;
+}
+
+.felar-essai {
+	border-left: 4px solid #dba617;
+	background: #fcf9e8;
+	padding: 0.7rem 0.9rem;
+}
+
+.felar-compteurs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.6rem;
+	margin: 0.75rem 0;
+	padding: 0;
+	list-style: none;
+}
+
+.felar-compteurs li {
+	background: #f6f7f7;
+	border: 1px solid #f0f0f1;
+	border-radius: 3px;
+	padding: 0.45rem 0.7rem;
+	min-width: 6.5rem;
+}
+
+.felar-compteurs strong {
+	display: block;
+	font-size: 1.3rem;
+	line-height: 1.2;
+}
+
+.felar-compteurs span {
+	color: #50575e;
+	font-size: 12px;
+}
+
+.felar-barre {
+	height: 0.5rem;
+	background: #f0f0f1;
+	border-radius: 3px;
+	overflow: hidden;
+	margin: 0.6rem 0;
+}
+
+.felar-barre > span {
+	display: block;
+	height: 100%;
+	background: #2271b1;
+	transition: width 0.3s ease;
+}
+
+.felar-cas {
+	margin: 0.75rem 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.felar-cas > li {
+	border-top: 1px solid #f0f0f1;
+	padding: 0.6rem 0;
+}
+
+.felar-cas .felar-cas-nombre {
+	font-weight: 600;
+}
+
+.felar-cas .felar-cas-exemples {
+	color: #646970;
+	font-size: 12px;
+	display: block;
+	margin-top: 0.2rem;
+}
+
+.felar-avancement {
+	color: #50575e;
+}
+
+.felar-journal td,
+.felar-journal th {
+	font-size: 13px;
+}
+
+@media screen and (max-width: 782px) {
+	.felar-grille {
+		grid-template-columns: 1fr;
+	}
+
+	.felar-faits th {
+		width: 8.5rem;
+	}
+
+	.felar-actions .button {
+		width: 100%;
+		text-align: center;
+	}
+
+	.felar-avancement {
+		display: block;
+		width: 100%;
+	}
+}
