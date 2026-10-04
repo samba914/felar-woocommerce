@@ -13,6 +13,7 @@ defined( 'ABSPATH' ) || exit;
 $felar_onglets = array(
 	'connexion' => 'Connexion',
 	'import'    => 'Import du catalogue',
+	'stock'     => 'Stock',
 	'journal'   => 'Journal',
 );
 ?>
@@ -73,6 +74,8 @@ $felar_onglets = array(
 	<?php
 	if ( 'import' === $onglet ) {
 		include FELAR_CONNECT_DIR . 'admin/views/onglet-import.php';
+	} elseif ( 'stock' === $onglet ) {
+		include FELAR_CONNECT_DIR . 'admin/views/onglet-stock.php';
 	} elseif ( 'journal' === $onglet ) {
 		include FELAR_CONNECT_DIR . 'admin/views/onglet-journal.php';
 	} else {

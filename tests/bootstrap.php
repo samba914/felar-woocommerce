@@ -40,5 +40,6 @@ require_once $felar_racine . 'class-felar-rapport.php';
 require_once $felar_racine . 'class-felar-reponse.php';
 require_once $felar_racine . 'interface-felar-transport.php';
 require_once $felar_racine . 'class-felar-client.php';
+require_once $felar_racine . 'class-felar-stock-regles.php';
 require_once __DIR__ . '/class-transport-factice.php';
 require_once __DIR__ . '/class-produits.php';

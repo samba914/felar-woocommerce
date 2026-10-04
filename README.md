@@ -16,10 +16,11 @@ ensemble : ce document-là est le seul lien, et il fait foi.
 
 | Fait | Pas encore |
 |---|---|
-| Appairage et test de la connexion (`GET /ping`) | Stock de Felar vers Woo (lot 3) |
-| Rapport d'analyse du catalogue, lu **avant** d'importer | Commandes Woo vers Felar (lot 4) |
-| Import du catalogue, déclinaisons comprises (`POST /products/batch`) | Propagation d'un prix corrigé dans Felar (lot 5) |
-| Retour des références fabriquées par Felar dans les UGS WooCommerce | Notification `stock.changed` (lot 6) |
+| Appairage et test de la connexion (`GET /ping`) | Commandes Woo vers Felar (lot 4) |
+| Rapport d'analyse du catalogue, lu **avant** d'importer | Propagation d'un prix corrigé dans Felar (lot 5) |
+| Import du catalogue, déclinaisons comprises (`POST /products/batch`) | Notification `stock.changed` (lot 6) |
+| Retour des références fabriquées par Felar dans les UGS WooCommerce | |
+| **Stock de Felar vers la boutique** (`GET /products?since=`) | |
 
 ---
 
@@ -79,6 +80,8 @@ un vrai serveur.
 | `includes/class-felar-analyse.php` | L'analyse par tranches |
 | `includes/class-felar-import.php` | L'import par Action Scheduler |
 | `includes/class-felar-references.php` | Les UGS fabriquées par Felar, réécrites chez Woo |
+| `includes/class-felar-stock-regles.php` | Que faire d'une ligne du flux — et quand ne rien faire |
+| `includes/class-felar-stock.php` | La lecture périodique du stock, curseur compris |
 | `admin/` | L'écran, en trois onglets |
 
 ---
@@ -105,6 +108,35 @@ un vrai serveur.
   support enverrait son mot de passe avec. Tout ce qui ressemble à une clé est
   masqué avant écriture.
 - **Capacité et jeton vérifiés sur chaque action.** Les deux, toujours.
+
+---
+
+## Le stock : écrire, jamais retrancher
+
+C'est la règle la plus coûteuse à enfreindre de tout le contrat, et elle ne se voit
+pas tout de suite. WooCommerce retire déjà la quantité de son propre stock quand une
+commande est passée ; Felar, lui, la réserve et la retire donc d'`available`.
+Soustraire la valeur reçue au lieu de la **remplacer** compte chaque vente deux fois,
+et le stock s'effondre en quelques jours — sans qu'aucune ligne de journal ne
+désigne la cause.
+
+Écrire a un second mérite : la synchronisation devient **idempotente**. La rejouer
+ne change rien, ce qui permet de la relancer après une coupure sans se demander où
+elle s'était arrêtée — et c'est aussi ce qui rend le bouton « Tout relire » sans
+danger.
+
+Deux conséquences dans le code :
+
+- le point de reprise vient du `syncedAt` **de la réponse**, jamais de l'horloge du
+  site : une horloge de deux minutes en avance ferait disparaître deux minutes de
+  modifications à chaque tour, définitivement ;
+- sur plusieurs pages, c'est le `syncedAt` de la **première** page qui est retenu.
+  Il a été figé avant la lecture, donc il ne peut pas sauter une modification
+  survenue pendant la pagination. On relit quelques lignes au passage suivant, et
+  cela ne coûte rien puisque écrire est idempotent.
+
+**Ce passage n'écrit que le stock.** Le flux porte aussi le prix et l'intitulé ; les
+reprendre écraserait la page que le marchand a écrite et que Google indexe.
 
 ---
 

@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.0
 WC tested up to: 9.9
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: Proprietary
 
 Votre site reste votre vitrine. Felar devient votre arrière-boutique : stock, caisse, commandes, clients, factures.
@@ -42,9 +42,11 @@ Felar ne touche pas à cet argent.
 4. Pour les articles sans UGS, Felar en fabrique une et vous proposez de la
    réécrire dans WooCommerce — pour ne pas avoir deux vocabulaires pour le même
    article, l'un au comptoir, l'autre à l'écran.
+5. Vous activez la **synchronisation du stock** : toutes les dix minutes, les
+   quantités de Felar descendent sur votre site.
 
-La remontée du stock vers votre site, les commandes et la propagation d'un prix
-corrigé dans Felar arrivent dans les versions suivantes.
+Les commandes et la propagation d'un prix corrigé dans Felar arrivent dans les
+versions suivantes.
 
 == Installation ==
 
@@ -63,6 +65,26 @@ corrigé dans Felar arrivent dans les versions suivantes.
 Felar vérifie tout ce que vous envoyez et **n'enregistre rien**. C'est fait pour
 éprouver le branchement sans salir votre comptabilité. Passer en production
 consiste à coller une clé `ck_live_`, rien d'autre.
+
+= Mon site affiche moins de stock que Felar =
+
+C'est normal, et c'est voulu. Felar publie le **disponible** : le stock moins ce
+que des commandes en cours ont déjà réservé. Vous verrez donc parfois 10 dans
+Felar et 8 sur votre site — les deux unités manquantes sont promises à quelqu'un.
+Publier le stock physique vous ferait vendre deux fois le même article.
+
+= Un article de Felar ne reçoit aucune quantité =
+
+L'écran *Stock* nomme chaque cas et dit quoi faire. Le plus fréquent : WooCommerce
+ne gère pas le stock de cet article. Cochez « Gérer le stock » sur sa fiche. Nous
+ne le faisons pas à votre place : cela ferait passer d'un coup des articles en
+« rupture », donc invendables sur votre site.
+
+= Felar ne vend plus un article. Et sur mon site ? =
+
+Rien ne change : sa page reste en ligne, et son stock n'est simplement plus publié.
+L'écran *Stock* vous le nomme. Dépublier une page que Google indexe est votre
+décision, pas la nôtre.
 
 = Mon stock envoyé n'a pas été retenu =
 
@@ -98,6 +120,10 @@ Révoquez-la dans Felar : c'est immédiat et sans délai de grâce. Générez-en
 autre et collez-la ici. Votre catalogue déjà monté n'est pas touché.
 
 == Changelog ==
+
+= 1.1.0 =
+* Synchronisation du stock, de Felar vers la boutique, toutes les dix minutes.
+* Écran *Stock* : ce qui a été écrit, et ce qui ne l'a pas été avec la raison.
 
 = 1.0.0 =
 * Appairage et test de la connexion.

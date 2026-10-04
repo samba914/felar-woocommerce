@@ -40,11 +40,15 @@ final class Felar_Admin {
 	/** @var Felar_References */
 	private $references;
 
-	public function __construct( Felar_Reglages $reglages, Felar_Analyse $analyse, Felar_Import $import, Felar_References $references ) {
+	/** @var Felar_Stock */
+	private $stock;
+
+	public function __construct( Felar_Reglages $reglages, Felar_Analyse $analyse, Felar_Import $import, Felar_References $references, Felar_Stock $stock ) {
 		$this->reglages   = $reglages;
 		$this->analyse    = $analyse;
 		$this->import     = $import;
 		$this->references = $references;
+		$this->stock      = $stock;
 	}
 
 	/** Branche les écrans et les actions. */
@@ -61,6 +65,10 @@ final class Felar_Admin {
 			'felar_arreter'     => 'arreter',
 			'felar_pousser'     => 'pousser',
 			'felar_references'  => 'ecrire_les_references',
+			'felar_stock'       => 'etat_du_stock',
+			'felar_stock_actif' => 'basculer_le_stock',
+			'felar_stock_maint' => 'synchroniser_le_stock',
+			'felar_stock_tout'  => 'tout_relire_le_stock',
 		);
 		foreach ( $actions as $crochet => $methode ) {
 			add_action( 'wp_ajax_' . $crochet, array( $this, $methode ) );
@@ -120,8 +128,9 @@ final class Felar_Admin {
 		$import     = $this->import;
 		$analyse    = $this->analyse;
 		$references = $this->references;
+		$stock      = $this->stock;
 		$onglet     = isset( $_GET['onglet'] ) ? sanitize_key( wp_unslash( $_GET['onglet'] ) ) : 'connexion';
-		if ( ! in_array( $onglet, array( 'connexion', 'import', 'journal' ), true ) ) {
+		if ( ! in_array( $onglet, array( 'connexion', 'import', 'stock', 'journal' ), true ) ) {
 			$onglet = 'connexion';
 		}
 
@@ -314,5 +323,52 @@ final class Felar_Admin {
 	public function ecrire_les_references() {
 		$this->verrou();
 		wp_send_json_success( $this->references->ecrire_une_tranche() );
+	}
+
+	/** L'état de la synchronisation du stock. */
+	public function etat_du_stock() {
+		$this->verrou();
+		wp_send_json_success( $this->stock->etat() );
+	}
+
+	/**
+	 * Met la synchronisation en route, ou l'arrête.
+	 *
+	 * Le premier passage écrira des quantités dans la boutique du marchand : c'est
+	 * pourquoi rien ne démarre tout seul après un import, et pourquoi ce bouton
+	 * existe.
+	 */
+	public function basculer_le_stock() {
+		$this->verrou();
+
+		if ( ! empty( $_POST['actif'] ) ) {
+			if ( ! $this->reglages->branchee() ) {
+				wp_send_json_error( array( 'message' => "Branchez d'abord une clé dans l'onglet Connexion." ) );
+			}
+			$verdict = $this->stock->activer();
+			if ( empty( $verdict['actif'] ) ) {
+				wp_send_json_error( array( 'message' => $verdict['message'] ) );
+			}
+		} else {
+			$this->stock->desactiver();
+		}
+
+		wp_send_json_success( $this->stock->etat() );
+	}
+
+	/** « Synchroniser maintenant » : un passage tout de suite, sans attendre. */
+	public function synchroniser_le_stock() {
+		$this->verrou();
+		if ( ! $this->reglages->branchee() ) {
+			wp_send_json_error( array( 'message' => "Branchez d'abord une clé dans l'onglet Connexion." ) );
+		}
+		wp_send_json_success( $this->stock->passer() );
+	}
+
+	/** Oublie le point de reprise : le passage suivant relit tout. */
+	public function tout_relire_le_stock() {
+		$this->verrou();
+		$this->stock->tout_relire();
+		wp_send_json_success( $this->stock->passer() );
 	}
 }

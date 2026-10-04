@@ -131,6 +131,39 @@ final class Felar_Client {
 		return $this->interpreter( $reponse );
 	}
 
+	/**
+	 * Lit le flux de stock.
+	 *
+	 * @param string $depuis Le `syncedAt` du passage précédent, jamais l'horloge du
+	 *                       site : une horloge de deux minutes en avance ferait
+	 *                       disparaître deux minutes de modifications à chaque tour,
+	 *                       définitivement.
+	 * @param string $curseur Le `nextCursor` de la page précédente, pour continuer.
+	 * @param int    $limite  1 à 500.
+	 * @return array
+	 */
+	public function lire_les_produits( $depuis = '', $curseur = '', $limite = Felar_Contrat::FLUX_PAR_PAGE ) {
+		$parametres = array( 'limit' => max( 1, min( 500, (int) $limite ) ) );
+
+		// Le curseur l'emporte : il porte déjà la position exacte dans la page
+		// suivante, et y ajouter un `since` restreindrait une seconde fois un flux
+		// déjà restreint.
+		if ( '' !== trim( (string) $curseur ) ) {
+			$parametres['cursor'] = trim( (string) $curseur );
+		} elseif ( '' !== trim( (string) $depuis ) ) {
+			$parametres['since'] = trim( (string) $depuis );
+		}
+
+		$reponse = $this->appeler(
+			'GET',
+			'/products?' . http_build_query( $parametres ),
+			null,
+			self::DELAI_LECTURE
+		);
+
+		return $this->interpreter( $reponse );
+	}
+
 	/** L'adresse complète d'un chemin du contrat. */
 	public function adresse( $chemin ) {
 		return $this->base . Felar_Contrat::CHEMIN . $chemin;

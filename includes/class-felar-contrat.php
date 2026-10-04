@@ -28,6 +28,27 @@ final class Felar_Contrat {
 	/** Cent lignes au plus par appel. Au-delà, `400 BATCH_TOO_LARGE`. */
 	const LIGNES_PAR_APPEL = 100;
 
+	/** Le flux de stock : 1 à 500 par page, 200 par défaut. */
+	const FLUX_PAR_PAGE = 200;
+
+	/**
+	 * L'intervalle entre deux lectures du stock, en secondes.
+	 *
+	 * Le contrat dit cinq à quinze minutes, et explique pourquoi descendre plus bas
+	 * ne sert à rien : ce n'est pas l'affichage qui protège de la survente, c'est le
+	 * refus à la commande. Interroger toutes les trente secondes ne rendrait pas le
+	 * stock plus juste, seulement le débit plus lourd.
+	 */
+	const FLUX_INTERVALLE = 600;
+
+	/**
+	 * Pages lues au plus en un passage.
+	 *
+	 * Deux mille articles par réveil : au-delà, on rend la main et on reprogramme,
+	 * pour ne pas tenir une tâche de fond — et la base — pendant plusieurs minutes.
+	 */
+	const FLUX_PAGES_PAR_PASSAGE = 10;
+
 	const EXTID_MAX = 64;
 	const REFERENCE_MAX = 64;
 	const INTITULE_MAX = 255;

@@ -169,6 +169,57 @@ class ClientTest extends TestCase {
 		$this->assertSame( '24500', $corps['products'][0]['price']['value'] );
 	}
 
+	public function test_le_flux_de_stock_demande_depuis_le_dernier_instant_connu() {
+		$client = $this->client( array( new Felar_Reponse( 200, array(), '{"products":[]}' ) ), $transport );
+
+		$client->lire_les_produits( '2026-09-29T11:04:02Z' );
+
+		$url = $transport->dernier()['url'];
+		$this->assertStringContainsString( '/products?', $url );
+		$this->assertStringContainsString( 'since=2026-09-29T11%3A04%3A02Z', $url );
+		$this->assertStringContainsString( 'limit=200', $url );
+		$this->assertSame( 'GET', $transport->dernier()['methode'] );
+	}
+
+	public function test_le_curseur_remplace_le_depuis_et_ne_sy_ajoute_pas() {
+		// Le curseur porte déjà la position exacte dans la page suivante : y ajouter
+		// un `since` restreindrait une seconde fois un flux déjà restreint, et des
+		// lignes disparaîtraient en cours de pagination.
+		$client = $this->client( array( new Felar_Reponse( 200, array(), '{"products":[]}' ) ), $transport );
+
+		$client->lire_les_produits( '2026-09-29T11:04:02Z', 'eyJ1cGRhdGVkQXQi' );
+
+		$url = $transport->dernier()['url'];
+		$this->assertStringContainsString( 'cursor=eyJ1cGRhdGVkQXQi', $url );
+		$this->assertStringNotContainsString( 'since=', $url );
+	}
+
+	public function test_la_taille_de_page_reste_dans_les_bornes_du_contrat() {
+		$client = $this->client(
+			array(
+				new Felar_Reponse( 200, array(), '{}' ),
+				new Felar_Reponse( 200, array(), '{}' ),
+			),
+			$transport
+		);
+
+		$client->lire_les_produits( '', '', 9000 );
+		$this->assertStringContainsString( 'limit=500', $transport->dernier()['url'] );
+
+		$client->lire_les_produits( '', '', 0 );
+		$this->assertStringContainsString( 'limit=1', $transport->dernier()['url'] );
+	}
+
+	public function test_un_premier_passage_sans_repere_lit_tout() {
+		$client = $this->client( array( new Felar_Reponse( 200, array(), '{"products":[]}' ) ), $transport );
+
+		$client->lire_les_produits();
+
+		$url = $transport->dernier()['url'];
+		$this->assertStringNotContainsString( 'since=', $url );
+		$this->assertStringNotContainsString( 'cursor=', $url );
+	}
+
 	public function test_la_cle_masquee_ne_montre_que_le_mode_et_la_fin() {
 		$this->assertSame( 'ck_live_…B8wZ', Felar_Client::masquer( self::CLE ) );
 		$this->assertSame( 'ck_test_…cdef', Felar_Client::masquer( 'ck_test_0123456789abcdef' ) );

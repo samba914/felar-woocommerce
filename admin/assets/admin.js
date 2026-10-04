@@ -480,3 +480,216 @@
 		surveiller();
 	}
 } )();
+
+/* ------------------------------------------------------------------ Stock */
+/*
+ * Le même esprit que l'import : rien d'écrit par `innerHTML` à partir d'un texte
+ * venu du serveur, et l'écran dit ce qui n'a PAS pu être fait — c'est la seule
+ * partie que personne ne pense à regarder, et la seule qui explique une dérive
+ * découverte à l'inventaire.
+ */
+( function () {
+	'use strict';
+
+	var zone = document.getElementById( 'felar-stock-etat' );
+	if ( ! zone ) {
+		return;
+	}
+
+	var cfg = window.felarConnect || {};
+
+	function poster( action, extra ) {
+		var corps = new URLSearchParams();
+		corps.append( 'action', action );
+		corps.append( 'jeton', cfg.jeton );
+		Object.keys( extra || {} ).forEach( function ( nom ) {
+			corps.append( nom, extra[ nom ] );
+		} );
+
+		return fetch( cfg.ajax, {
+			method: 'POST',
+			credentials: 'same-origin',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: corps.toString()
+		} )
+			.then( function ( r ) {
+				return r.json().catch( function () {
+					return { success: false, data: { message: 'Réponse illisible du site (code ' + r.status + ').' } };
+				} );
+			} )
+			.catch( function () {
+				return { success: false, data: { message: 'Le site n\'a pas répondu.' } };
+			} );
+	}
+
+	function vider( e ) {
+		while ( e.firstChild ) {
+			e.removeChild( e.firstChild );
+		}
+	}
+
+	function accord( n, singulier, pluriel ) {
+		return Math.abs( n ) < 2 ? singulier : pluriel;
+	}
+
+	function message( texte, ton ) {
+		var p = document.createElement( 'p' );
+		p.className = 'felar-message' + ( ton ? ' felar-' + ton : '' );
+		p.textContent = texte;
+		return p;
+	}
+
+	function compteur( valeur, singulier, pluriel ) {
+		var li = document.createElement( 'li' );
+		var f = document.createElement( 'strong' );
+		f.textContent = String( valeur );
+		var s = document.createElement( 'span' );
+		s.textContent = accord( valeur, singulier, pluriel || singulier );
+		li.appendChild( f );
+		li.appendChild( s );
+		return li;
+	}
+
+	function quand( horodatage ) {
+		if ( ! horodatage ) {
+			return 'jamais';
+		}
+		return new Date( horodatage * 1000 ).toLocaleString();
+	}
+
+	function afficher( vue ) {
+		vider( zone );
+		if ( ! vue ) {
+			return;
+		}
+
+		var bascule = document.getElementById( 'felar-stock-bascule' );
+		if ( bascule ) {
+			bascule.dataset.actif = vue.actif ? '1' : '0';
+			bascule.textContent = vue.actif ? 'Arrêter la synchronisation' : 'Activer la synchronisation';
+		}
+
+		zone.appendChild( message(
+			vue.actif ? 'Synchronisation active.' : 'Synchronisation arrêtée.',
+			vue.actif ? 'bien' : null
+		) );
+
+		if ( 'erreur' === vue.verdict && vue.message ) {
+			zone.appendChild( message( vue.message, 'mal' ) );
+		}
+
+		var faits = document.createElement( 'table' );
+		faits.className = 'felar-faits';
+		[
+			[ 'Dernière lecture', quand( vue.dernier ) ],
+			[ 'Prochaine prévue', vue.prochain ? quand( vue.prochain ) : 'aucune' ],
+			[ 'Reprise depuis', vue.depuis || 'le début du catalogue' ]
+		].forEach( function ( ligne ) {
+			var tr = document.createElement( 'tr' );
+			var th = document.createElement( 'th' );
+			th.scope = 'row';
+			th.textContent = ligne[ 0 ];
+			var td = document.createElement( 'td' );
+			td.textContent = ligne[ 1 ];
+			tr.appendChild( th );
+			tr.appendChild( td );
+			faits.appendChild( tr );
+		} );
+		zone.appendChild( faits );
+
+		var liste = document.createElement( 'ul' );
+		liste.className = 'felar-compteurs';
+		liste.appendChild( compteur( vue.compteurs.lus, 'article lu', 'articles lus' ) );
+		liste.appendChild( compteur( vue.compteurs.ecrits, 'quantité écrite', 'quantités écrites' ) );
+		liste.appendChild( compteur( vue.compteurs.inchanges, 'déjà à jour' ) );
+		liste.appendChild( compteur( vue.compteurs.ignores, 'laissé de côté', 'laissés de côté' ) );
+		zone.appendChild( liste );
+
+		if ( vue.en_cours ) {
+			zone.appendChild( message( 'Lecture en cours : il reste des pages à parcourir.' ) );
+		}
+
+		if ( vue.cas && vue.cas.length ) {
+			var titre = document.createElement( 'h3' );
+			titre.textContent = 'Ce qui n\'a pas été écrit, et pourquoi';
+			zone.appendChild( titre );
+
+			var ul = document.createElement( 'ul' );
+			ul.className = 'felar-cas';
+			vue.cas.forEach( function ( cas ) {
+				var li = document.createElement( 'li' );
+				var n = document.createElement( 'span' );
+				n.className = 'felar-cas-nombre';
+				n.textContent = cas.nombre + ' — ';
+				var p = document.createElement( 'span' );
+				p.textContent = cas.phrase;
+				li.appendChild( n );
+				li.appendChild( p );
+				if ( cas.exemples && cas.exemples.length ) {
+					var ex = document.createElement( 'span' );
+					ex.className = 'felar-cas-exemples';
+					ex.textContent = 'Par exemple : ' + cas.exemples.join( ', ' );
+					li.appendChild( ex );
+				}
+				ul.appendChild( li );
+			} );
+			zone.appendChild( ul );
+		}
+	}
+
+	function agir( bouton, action, extra, attente ) {
+		bouton.disabled = true;
+		vider( zone );
+		zone.appendChild( message( attente ) );
+
+		poster( action, extra ).then( function ( reponse ) {
+			bouton.disabled = false;
+			if ( ! reponse.success ) {
+				vider( zone );
+				zone.appendChild( message(
+					reponse.data && reponse.data.message ? reponse.data.message : 'Échec.',
+					'mal'
+				) );
+				return;
+			}
+			afficher( reponse.data );
+		} );
+	}
+
+	var bascule = document.getElementById( 'felar-stock-bascule' );
+	if ( bascule ) {
+		bascule.addEventListener( 'click', function () {
+			var allumer = '1' !== bascule.dataset.actif;
+			if ( allumer && ! window.confirm(
+				'À partir de maintenant, c\'est Felar qui tient le stock : les quantités de votre boutique seront remplacées par les siennes. Continuer ?'
+			) ) {
+				return;
+			}
+			agir( bascule, 'felar_stock_actif', { actif: allumer ? '1' : '0' },
+				allumer ? 'Mise en route…' : 'Arrêt…' );
+		} );
+	}
+
+	var maintenant = document.getElementById( 'felar-stock-maintenant' );
+	if ( maintenant ) {
+		maintenant.addEventListener( 'click', function () {
+			agir( maintenant, 'felar_stock_maint', {}, 'Lecture du stock chez Felar…' );
+		} );
+	}
+
+	var tout = document.getElementById( 'felar-stock-tout' );
+	if ( tout ) {
+		tout.addEventListener( 'click', function () {
+			if ( ! window.confirm( 'Relire tout le catalogue au prochain passage ?' ) ) {
+				return;
+			}
+			agir( tout, 'felar_stock_tout', {}, 'Relecture complète…' );
+		} );
+	}
+
+	try {
+		afficher( JSON.parse( zone.dataset.initial ) );
+	} catch ( erreur ) {
+		/* Rien à afficher au chargement : les boutons restent utilisables. */
+	}
+} )();
