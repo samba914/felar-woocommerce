@@ -103,9 +103,11 @@ $felar_cron_coupe   = defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON;
 			</button>
 			<span id="felar-references-etat" class="felar-avancement" aria-live="polite">
 				<?php
+				// Zéro et un prennent le singulier : « 1 articles en attente » se lit
+				// comme une faute sur un écran que le marchand consulte souvent.
 				$felar_attente = $references->combien_en_attente();
 				echo $felar_attente > 0
-					? esc_html( $felar_attente . ' article(s) en attente.' )
+					? esc_html( $felar_attente . ( $felar_attente > 1 ? ' articles en attente.' : ' article en attente.' ) )
 					: 'Rien en attente.';
 				?>
 			</span>

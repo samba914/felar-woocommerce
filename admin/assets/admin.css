@@ -16,9 +16,18 @@
 	margin-bottom: 1.25rem;
 }
 
+/*
+ * `min( 23rem, 100% )` et non `23rem` : sans le `min`, une colonne de 368 px
+ * reste large de 368 px dans un conteneur de 343 px, et la carte dépasse —
+ * l'écran part en défilement horizontal sur un téléphone. La largeur minimale
+ * ne doit jamais l'emporter sur celle du conteneur.
+ *
+ * C'est aussi ce qui rend la mise en page indépendante de la requête de média
+ * ci-dessous : elle range mieux, elle ne rattrape rien.
+ */
 .felar-grille {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(23rem, 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(min(23rem, 100%), 1fr));
 	gap: 1.25rem;
 	align-items: start;
 }
@@ -40,8 +49,25 @@
 	margin-bottom: 0.35rem;
 }
 
+/*
+ * WordPress donne 25 em à `.regular-text`, soit environ 350 px : dans une carte
+ * d'un téléphone, le champ sort tout seul. Et une `.description` reste en ligne
+ * après lui, donc une phrase française un peu longue pousse la largeur encore
+ * plus loin. Les deux se corrigent ici, et une fois pour toutes les cartes.
+ */
 .felar-large {
-	max-width: 100%;
+	width: 100%;
+	max-width: 32rem;
+	box-sizing: border-box;
+}
+
+.felar-carte .description {
+	display: block;
+	margin-top: 0.3rem;
+}
+
+.felar-carte {
+	overflow-wrap: break-word;
 }
 
 .felar-actions {

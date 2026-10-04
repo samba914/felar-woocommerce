@@ -53,12 +53,21 @@
 		return bloc;
 	}
 
-	function compteur( valeur, intitule ) {
+	/*
+	 * En français, zéro et un prennent le singulier. « 1 fiches créées » se lit
+	 * comme une faute, et sur un écran que le marchand consulte après chaque
+	 * import, il la lira souvent.
+	 */
+	function accord( valeur, singulier, pluriel ) {
+		return Math.abs( valeur ) < 2 ? singulier : pluriel;
+	}
+
+	function compteur( valeur, singulier, pluriel ) {
 		var item = document.createElement( 'li' );
 		var fort = document.createElement( 'strong' );
 		fort.textContent = String( valeur );
 		var texte = document.createElement( 'span' );
-		texte.textContent = intitule;
+		texte.textContent = accord( valeur, singulier, pluriel || singulier );
 		item.appendChild( fort );
 		item.appendChild( texte );
 		return item;
@@ -176,19 +185,22 @@
 		var r = vue.resume;
 		var liste = document.createElement( 'ul' );
 		liste.className = 'felar-compteurs';
-		liste.appendChild( compteur( r.produits, 'produits lus' ) );
-		liste.appendChild( compteur( r.a_envoyer, 'lignes à envoyer' ) );
-		liste.appendChild( compteur( r.modeles, 'fiches à déclinaisons' ) );
-		liste.appendChild( compteur( r.declinaisons, 'déclinaisons' ) );
+		liste.appendChild( compteur( r.produits, 'produit lu', 'produits lus' ) );
+		liste.appendChild( compteur( r.a_envoyer, 'ligne à envoyer', 'lignes à envoyer' ) );
+		liste.appendChild( compteur( r.modeles, 'fiche à déclinaisons', 'fiches à déclinaisons' ) );
+		liste.appendChild( compteur( r.declinaisons, 'déclinaison', 'déclinaisons' ) );
 		liste.appendChild( compteur( r.sans_reference, 'sans UGS' ) );
-		liste.appendChild( compteur( r.ecartes, 'écartés' ) );
-		liste.appendChild( compteur( r.appels, 'appels prévus' ) );
+		liste.appendChild( compteur( r.ecartes, 'produit écarté', 'produits écartés' ) );
+		liste.appendChild( compteur( r.appels, 'appel prévu', 'appels prévus' ) );
 		zoneRapport.appendChild( liste );
 
 		if ( r.references_en_trop > 0 ) {
 			zoneRapport.appendChild( message(
-				r.references_en_trop + ' UGS sont portées par plusieurs articles : ' +
-				r.lignes_doublons + ' ligne(s) ne seront pas envoyées. Corrigez-les dans WooCommerce, puis relancez.',
+				r.references_en_trop +
+				accord( r.references_en_trop, ' UGS est portée', ' UGS sont portées' ) +
+				' par plusieurs articles : ' + r.lignes_doublons +
+				accord( r.lignes_doublons, ' ligne ne sera pas envoyée', ' lignes ne seront pas envoyées' ) +
+				'. Corrigez-les dans WooCommerce, puis relancez.',
 				'mal'
 			) );
 		}
@@ -269,11 +281,11 @@
 
 		var liste = document.createElement( 'ul' );
 		liste.className = 'felar-compteurs';
-		liste.appendChild( compteur( vue.compteurs.crees, 'fiches créées' ) );
-		liste.appendChild( compteur( vue.compteurs.majs, 'fiches mises à jour' ) );
-		liste.appendChild( compteur( vue.compteurs.refusees, 'lignes refusées' ) );
-		liste.appendChild( compteur( vue.compteurs.ecartes, 'produits écartés' ) );
-		liste.appendChild( compteur( vue.compteurs.appels, 'appels à Felar' ) );
+		liste.appendChild( compteur( vue.compteurs.crees, 'fiche créée', 'fiches créées' ) );
+		liste.appendChild( compteur( vue.compteurs.majs, 'fiche mise à jour', 'fiches mises à jour' ) );
+		liste.appendChild( compteur( vue.compteurs.refusees, 'ligne refusée', 'lignes refusées' ) );
+		liste.appendChild( compteur( vue.compteurs.ecartes, 'produit écarté', 'produits écartés' ) );
+		liste.appendChild( compteur( vue.compteurs.appels, 'appel à Felar', 'appels à Felar' ) );
 		zoneImport.appendChild( liste );
 
 		if ( vue.essai ) {
@@ -319,7 +331,8 @@
 
 		if ( vue.refus && vue.refus.length ) {
 			var titre = document.createElement( 'h3' );
-			titre.textContent = 'Lignes refusées (' + vue.refus_total + ')';
+			titre.textContent = accord( vue.refus_total, 'Ligne refusée', 'Lignes refusées' )
+				+ ' (' + vue.refus_total + ')';
 			zoneImport.appendChild( titre );
 			var refus = document.createElement( 'ul' );
 			refus.className = 'felar-cas';
@@ -406,7 +419,7 @@
 			return;
 		}
 		etatReferences.textContent = combien > 0
-			? combien + ' article(s) en attente.'
+			? combien + accord( combien, ' article en attente.', ' articles en attente.' )
 			: 'Rien en attente.';
 	}
 
@@ -428,7 +441,10 @@
 
 				var d = reponse.data;
 				majReferences( d.restantes );
-				zone.appendChild( message( d.ecrites + ' UGS écrite(s) dans WooCommerce.', 'bien' ) );
+				zone.appendChild( message(
+					d.ecrites + accord( d.ecrites, ' UGS écrite', ' UGS écrites' ) + ' dans WooCommerce.',
+					'bien'
+				) );
 
 				if ( d.refusees && d.refusees.length ) {
 					var liste = document.createElement( 'ul' );
