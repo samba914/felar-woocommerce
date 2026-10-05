@@ -260,6 +260,30 @@ final class Felar_Client {
 		);
 	}
 
+	/**
+	 * Annonce un remboursement, ligne par ligne.
+	 *
+	 * <h3>Pourquoi des lignes</h3>
+	 * Un remboursement décide de l'argent <b>et</b> de la marchandise. Un montant
+	 * seul ne dit pas quel article revient en stock, et Felar refuse de le deviner :
+	 * un retour mal attribué fausse un inventaire pour des mois. WooCommerce, lui,
+	 * connaît les lignes que le marchand a cochées.
+	 *
+	 * @param string $externe L'identifiant de la commande chez le marchand.
+	 * @param array  $corps   `lines`, et éventuellement `reason`, `restock`, `creditNote`.
+	 * @return array
+	 */
+	public function rembourser( $externe, array $corps ) {
+		return $this->interpreter(
+			$this->appeler(
+				'POST',
+				'/orders/' . rawurlencode( (string) $externe ) . '/refund?source=woocommerce',
+				wp_json_encode( $corps ),
+				self::DELAI_ECRITURE
+			)
+		);
+	}
+
 	/** L'adresse complète d'un chemin du contrat. */
 	public function adresse( $chemin ) {
 		return $this->base . Felar_Contrat::CHEMIN . $chemin;

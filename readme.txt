@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.0
 WC tested up to: 9.9
-Stable tag: 1.3.0
+Stable tag: 1.5.0
 License: Proprietary
 
 Votre site reste votre vitrine. Felar devient votre arrière-boutique : stock, caisse, commandes, clients, factures.
@@ -70,12 +70,42 @@ Felar vérifie tout ce que vous envoyez et **n'enregistre rien**. C'est fait pou
 éprouver le branchement sans salir votre comptabilité. Passer en production
 consiste à coller une clé `ck_live_`, rien d'autre.
 
+= J'ai remboursé un client : que se passe-t-il dans Felar ? =
+
+Si votre remboursement porte sur des **articles** — ce qui est le cas quand vous
+les cochez dans WooCommerce — ils remontent dans Felar : la quantité revient en
+stock, et un avoir peut être produit sur la facture. Un remboursement partiel
+fonctionne aussi bien qu'un total.
+
+Si votre remboursement ne porte qu'un **montant**, sans article, Felar ne le
+reprend pas : il ne saurait pas quoi faire de la marchandise, et deviner
+fausserait votre inventaire pour des mois. Traitez ce geste commercial dans Felar,
+sur l'écran de la commande.
+
+= Mon remboursement est refusé : « commande non livrée » =
+
+Un retour suppose que la marchandise soit partie. Passez d'abord la commande à
+« Terminée » dans WooCommerce — c'est ce qui dit à Felar qu'elle a été livrée — puis
+enregistrez le remboursement.
+
 = J'ai remboursé un client, Felar ne le voit pas =
 
 Un remboursement décide de deux choses à la fois : ce que devient le stock et ce
 que devient la facture. L'enregistrer à moitié vous donnerait une comptabilité
 fausse. Faites-le dans Felar, sur l'écran de la commande, où vous voyez ce que
 vous rendez.
+
+= Mon site affiche de moins en moins de stock, alors que mes étagères sont pleines =
+
+Vos commandes ne sont probablement jamais passées à **« Terminée »** dans
+WooCommerce.
+
+Chaque commande réserve ses articles dans Felar : ils sont encore chez vous, mais
+plus vendables. Cette réservation ne se dénoue qu'au moment où vous marquez la
+commande terminée — c'est ce qui dit à Felar que la marchandise est partie. Sans
+cela, elles s'accumulent et votre disponible descend jusqu'à zéro.
+
+Votre stock physique, lui, n'a pas bougé.
 
 = Mon site affiche moins de stock que Felar =
 
@@ -131,6 +161,15 @@ Révoquez-la dans Felar : c'est immédiat et sans délai de grâce. Générez-en
 autre et collez-la ici. Votre catalogue déjà monté n'est pas touché.
 
 == Changelog ==
+
+= 1.5.0 =
+* Les remboursements, partiels comme totaux, remontent dans Felar avec leurs
+  lignes : le stock revient et un avoir peut être produit.
+
+= 1.4.0 =
+* Une commande passée en « Terminée » dans WooCommerce libère la réservation de
+  stock dans Felar. Sans cela, votre disponible baissait à chaque vente web sans
+  jamais remonter.
 
 = 1.3.0 =
 * Les corrections faites dans Felar — prix, intitulé, description — sont posées

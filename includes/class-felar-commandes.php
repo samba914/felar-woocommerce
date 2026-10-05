@@ -29,6 +29,7 @@ final class Felar_Commandes {
 	const OPTION = 'felar_connect_commandes';
 	const ACTION = 'felar_connect_commande';
 	const ETAT   = 'felar_connect_commande_etat';
+	const REMBOURSEMENT = 'felar_connect_commande_remboursement';
 	const GROUPE = 'felar-connect';
 
 	/** L'identifiant Felar de la commande, et son numéro chez le marchand. */
@@ -56,6 +57,7 @@ final class Felar_Commandes {
 	public function brancher() {
 		add_action( self::ACTION, array( $this, 'envoyer' ), 10, 2 );
 		add_action( self::ETAT, array( $this, 'pousser_letat' ), 10, 3 );
+		add_action( self::REMBOURSEMENT, array( $this, 'envoyer_le_remboursement' ), 10, 3 );
 
 		if ( ! $this->actif() ) {
 			return;
@@ -70,6 +72,11 @@ final class Felar_Commandes {
 		// envoi est sans conséquence puisque Felar n'encaisse pas deux fois.
 		add_action( 'woocommerce_payment_complete', array( $this, 'au_reglement' ), 20, 1 );
 		add_action( 'woocommerce_order_status_changed', array( $this, 'au_changement' ), 20, 4 );
+
+		// Un remboursement PARTIEL ne change pas l'état de la commande : elle reste
+		// « terminée ». Sans ce crochet-là, il passerait inaperçu — et c'est le cas
+		// le plus fréquent, un seul article rendu sur trois.
+		add_action( 'woocommerce_order_refunded', array( $this, 'au_remboursement' ), 20, 2 );
 	}
 
 	/** Vrai si le marchand a mis l'envoi en route. */
@@ -104,12 +111,20 @@ final class Felar_Commandes {
 			return;
 		}
 
+		if ( 'completed' === $apres ) {
+			// La marchandise est partie. Sans cette annonce, la reservation posee a
+			// l entree de la commande tiendrait pour toujours : le disponible du
+			// marchand baisserait d une unite a chaque vente web et ne remonterait
+			// jamais. C est la panne la plus lente et la plus deroutante du
+			// connecteur, et elle ne se voit qu au bout de quelques semaines.
+			$this->enfiler_un_etat( $identifiant, 'DELIVERED' );
+			return;
+		}
+
 		if ( 'refunded' === $apres ) {
-			// Le remboursement n'est pas pris en charge en version 1, et l'envoyer à
-			// moitié — le montant sans les lignes — donnerait une comptabilité fausse.
-			// On le dit au marchand plutôt que de le taire.
-			$this->retenir_un_refus( $identifiant, 'REMBOURSEMENT',
-				'Le remboursement se traite dans Felar, sur l\'écran de la commande : il décide du sort du stock et de la facture à la fois.' );
+			// Un remboursement total emprunte le même chemin qu'un partiel : ce sont
+			// ses LIGNES qui comptent, jamais son montant.
+			$this->enfiler_un_remboursement( $identifiant );
 			return;
 		}
 
@@ -117,6 +132,112 @@ final class Felar_Commandes {
 		if ( in_array( $apres, $payes, true ) && ! in_array( $avant, $payes, true ) ) {
 			$this->enfiler_un_etat( $identifiant, 'PAID' );
 		}
+	}
+
+	/**
+	 * Un remboursement vient d'être enregistré dans WooCommerce.
+	 *
+	 * @param int $commande Identifiant de la commande.
+	 * @param int $remboursement Identifiant du remboursement.
+	 */
+	public function au_remboursement( $commande, $remboursement ) {
+		$this->enfiler_un_remboursement( (int) $commande, (int) $remboursement );
+	}
+
+	/** Met un remboursement dans la file. */
+	public function enfiler_un_remboursement( $identifiant, $remboursement = 0, $tentative = 0 ) {
+		if ( $identifiant <= 0 || ! function_exists( 'as_enqueue_async_action' ) ) {
+			return;
+		}
+		as_enqueue_async_action( self::REMBOURSEMENT,
+			array( $identifiant, $remboursement, $tentative ), self::GROUPE );
+	}
+
+	/**
+	 * Envoie un remboursement à Felar, avec ses lignes.
+	 *
+	 * <h3>Ce qu'on envoie, et ce qu'on tait</h3>
+	 * Les articles rendus et leur quantité — rien d'autre. Un remboursement qui ne
+	 * porterait qu'un montant ne dirait pas ce que devient la marchandise, et Felar
+	 * le refuse plutôt que de l'enregistrer à moitié. Un geste commercial sur un
+	 * montant se traite donc dans Felar, sur l'écran de la commande.
+	 *
+	 * @param int $identifiant   La commande.
+	 * @param int $remboursement Le remboursement précis, ou 0 pour tous.
+	 * @param int $tentative     Le rang de la tentative.
+	 */
+	public function envoyer_le_remboursement( $identifiant, $remboursement = 0, $tentative = 0 ) {
+		$commande = wc_get_order( (int) $identifiant );
+		if ( ! $commande ) {
+			return;
+		}
+
+		$lignes = $this->lignes_rendues( $commande, (int) $remboursement );
+		if ( empty( $lignes ) ) {
+			// Un remboursement sans ligne : un geste commercial sur un montant. Felar
+			// le refuserait, et il a raison — il ne dit rien de la marchandise.
+			$this->retenir_un_refus( $identifiant, 'REMBOURSEMENT_SANS_LIGNE',
+				"Ce remboursement ne porte aucun article : Felar ne saurait pas quoi faire du stock. Traitez-le dans Felar, sur l'écran de la commande." );
+			return;
+		}
+
+		$resultat = $this->reglages->client()->rembourser(
+			(string) $identifiant,
+			array(
+				'lines'  => $lignes,
+				'reason' => 'Remboursement enregistré dans WooCommerce',
+			)
+		);
+
+		if ( 'ok' !== $resultat['issue'] ) {
+			$this->rejouer_ou_renoncer( $identifiant, $resultat, $tentative, null );
+			return;
+		}
+
+		$etat = $this->etat_brut();
+		$etat['compteurs']['etats']++;
+		$etat['dernier'] = time();
+		$this->enregistrer( $etat );
+
+		foreach ( (array) ( isset( $resultat['donnees']['warnings'] ) ? $resultat['donnees']['warnings'] : array() ) as $avertissement ) {
+			$this->retenir_un_refus( $identifiant,
+				isset( $avertissement['code'] ) ? $avertissement['code'] : '',
+				isset( $avertissement['message'] ) ? $avertissement['message'] : '', false );
+		}
+	}
+
+	/**
+	 * Les articles rendus, en quantités positives.
+	 *
+	 * WooCommerce range les quantités remboursées en NÉGATIF — c'est ainsi qu'il
+	 * les soustrait de la commande. Felar attend une quantité rendue, donc positive :
+	 * envoyer le signe tel quel ferait refuser chaque ligne.
+	 */
+	private function lignes_rendues( $commande, $remboursement ) {
+		$rendues = array();
+
+		foreach ( $commande->get_refunds() as $retour ) {
+			if ( $remboursement > 0 && (int) $retour->get_id() !== $remboursement ) {
+				continue;
+			}
+			foreach ( $retour->get_items() as $article ) {
+				$quantite = abs( (float) $article->get_quantity() );
+				if ( $quantite <= 0 ) {
+					continue;
+				}
+				$variation = (int) $article->get_variation_id();
+				$produit   = $variation > 0 ? $variation : (int) $article->get_product_id();
+				$objet     = $article->get_product();
+
+				$rendues[] = array(
+					'externalId' => (string) $produit,
+					'reference'  => $objet ? (string) $objet->get_sku() : '',
+					'quantity'   => $quantite,
+				);
+			}
+		}
+
+		return $rendues;
 	}
 
 	/** Met une commande dans la file. */
