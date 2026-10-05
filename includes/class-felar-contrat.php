@@ -110,6 +110,31 @@ final class Felar_Contrat {
 		return strlen( $texte ) > $max ? trim( substr( $texte, 0, $max ) ) : $texte;
 	}
 
+	/**
+	 * Un montant du contrat : `{ value, currency }`, la valeur en chaîne.
+	 *
+	 * <h3>Pourquoi une chaîne et pas un nombre</h3>
+	 * `24500.00` passé en `float` puis rendu par `json_encode` peut ressortir en
+	 * `24499.999999999996` selon la configuration de PHP. Sur un prix de catalogue
+	 * c'est laid ; sur le total d'une commande, cela peut faire basculer le
+	 * garde-fou des 5 % du serveur. Une chaîne décimale ne laisse aucune place à
+	 * cette surprise, et Felar la lit sans difficulté.
+	 *
+	 * @param mixed  $valeur Un nombre ou une chaîne numérique.
+	 * @param string $devise Code ISO 4217.
+	 * @return array
+	 */
+	public static function montant( $valeur, $devise ) {
+		$chiffre = number_format( (float) $valeur, 4, '.', '' );
+		if ( false !== strpos( $chiffre, '.' ) ) {
+			$chiffre = rtrim( rtrim( $chiffre, '0' ), '.' );
+		}
+		return array(
+			'value'    => '' === $chiffre || '-0' === $chiffre ? '0' : $chiffre,
+			'currency' => strtoupper( (string) $devise ),
+		);
+	}
+
 	/** Vrai si la longueur dépasse la borne, avant coupe. */
 	public static function trop_long( $texte, $max ) {
 		$texte = trim( (string) $texte );

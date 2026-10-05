@@ -38,8 +38,12 @@ final class Felar_Stock {
 	/** @var Felar_Reglages */
 	private $reglages;
 
-	public function __construct( Felar_Reglages $reglages ) {
-		$this->reglages = $reglages;
+	/** @var Felar_Propagation */
+	private $propagation;
+
+	public function __construct( Felar_Reglages $reglages, Felar_Propagation $propagation ) {
+		$this->reglages    = $reglages;
+		$this->propagation = $propagation;
 	}
 
 	/** Branche le traitement des passages. */
@@ -156,6 +160,10 @@ final class Felar_Stock {
 
 			$suite = isset( $donnees['nextCursor'] ) ? trim( (string) $donnees['nextCursor'] ) : '';
 			if ( '' === $suite ) {
+				// Le flux est épuisé : c'est le bon moment pour vider la file des
+				// modifications que le marchand a acceptées. Un seul rythme pour les
+				// deux sens, et un interrupteur de moins à comprendre.
+				$this->propagation->passer();
 				// Le flux est épuisé : le curseur retombe, et c'est l'instant figé
 				// qui devient le point de départ du prochain passage.
 				$etat['since']   = '' !== $etat['fige'] ? $etat['fige'] : $etat['since'];
@@ -362,6 +370,9 @@ final class Felar_Stock {
 			'cas'        => $cas,
 			'prochain'   => $this->prochain_passage(),
 			'intervalle' => Felar_Contrat::FLUX_INTERVALLE,
+			// Les deux sens voyagent au même rythme : un interrupteur de moins à
+			// comprendre, et une seule date à regarder quand on doute.
+			'propagation' => $this->propagation->etat(),
 		);
 	}
 

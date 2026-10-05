@@ -158,6 +158,18 @@ class StockTest extends TestCase {
 		$this->assertSame( 'absent', $verdict['action'] );
 	}
 
+	public function test_un_prix_de_felar_est_converti_si_la_boutique_saisit_hors_taxe() {
+		// Felar tient un prix TOUTES TAXES. Un marchand qui saisit hors taxe et à qui
+		// on écrirait la valeur telle quelle verrait son catalogue entier gonfler de
+		// la TVA d'un coup — et il ne le découvrirait qu'à la première commande.
+		$this->assertSame( 23600.0, Felar_Propagation::prix_a_ecrire( '23600', true, 18 ) );
+		$this->assertSame( 20000.0, round( Felar_Propagation::prix_a_ecrire( '23600', false, 18 ), 2 ) );
+	}
+
+	public function test_sans_taxe_le_prix_passe_tel_quel() {
+		$this->assertSame( 23600.0, Felar_Propagation::prix_a_ecrire( '23600', false, 0 ) );
+	}
+
 	public function test_chaque_code_a_une_phrase_qui_dit_quoi_faire() {
 		foreach ( array_keys( Felar_Stock_Regles::phrases() ) as $code ) {
 			$phrase = Felar_Stock_Regles::phrase( $code );

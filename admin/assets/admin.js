@@ -693,3 +693,184 @@
 		/* Rien à afficher au chargement : les boutons restent utilisables. */
 	}
 } )();
+
+/* -------------------------------------------------------------- Commandes */
+( function () {
+	'use strict';
+
+	var zone = document.getElementById( 'felar-cmd-etat' );
+	if ( ! zone ) {
+		return;
+	}
+
+	var cfg = window.felarConnect || {};
+
+	function poster( action, extra ) {
+		var corps = new URLSearchParams();
+		corps.append( 'action', action );
+		corps.append( 'jeton', cfg.jeton );
+		Object.keys( extra || {} ).forEach( function ( n ) {
+			corps.append( n, extra[ n ] );
+		} );
+		return fetch( cfg.ajax, {
+			method: 'POST',
+			credentials: 'same-origin',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: corps.toString()
+		} )
+			.then( function ( r ) {
+				return r.json().catch( function () {
+					return { success: false, data: { message: 'Réponse illisible (code ' + r.status + ').' } };
+				} );
+			} )
+			.catch( function () {
+				return { success: false, data: { message: 'Le site n\'a pas répondu.' } };
+			} );
+	}
+
+	function vider( e ) {
+		while ( e.firstChild ) {
+			e.removeChild( e.firstChild );
+		}
+	}
+
+	function accord( n, s, p ) {
+		return Math.abs( n ) < 2 ? s : ( p || s );
+	}
+
+	function message( texte, ton ) {
+		var p = document.createElement( 'p' );
+		p.className = 'felar-message' + ( ton ? ' felar-' + ton : '' );
+		p.textContent = texte;
+		return p;
+	}
+
+	function compteur( valeur, s, p ) {
+		var li = document.createElement( 'li' );
+		var f = document.createElement( 'strong' );
+		f.textContent = String( valeur );
+		var t = document.createElement( 'span' );
+		t.textContent = accord( valeur, s, p );
+		li.appendChild( f );
+		li.appendChild( t );
+		return li;
+	}
+
+	function afficher( vue ) {
+		vider( zone );
+		if ( ! vue ) {
+			return;
+		}
+
+		var bascule = document.getElementById( 'felar-cmd-bascule' );
+		if ( bascule ) {
+			bascule.dataset.actif = vue.actif ? '1' : '0';
+			bascule.textContent = vue.actif ? 'Arrêter l\'envoi' : 'Activer l\'envoi';
+		}
+
+		zone.appendChild( message(
+			vue.actif ? 'Envoi des commandes actif.' : 'Envoi des commandes arrêté.',
+			vue.actif ? 'bien' : null
+		) );
+
+		if ( 'number' === typeof vue.reprises ) {
+			zone.appendChild( message(
+				vue.reprises + accord( vue.reprises, ' commande remise en file.', ' commandes remises en file.' )
+			) );
+		}
+
+		var liste = document.createElement( 'ul' );
+		liste.className = 'felar-compteurs';
+		liste.appendChild( compteur( vue.compteurs.envoyees, 'commande montée', 'commandes montées' ) );
+		liste.appendChild( compteur( vue.compteurs.etats, 'suite annoncée', 'suites annoncées' ) );
+		liste.appendChild( compteur( vue.compteurs.doublons, 'déjà connue', 'déjà connues' ) );
+		liste.appendChild( compteur( vue.compteurs.refusees, 'non transmise', 'non transmises' ) );
+		liste.appendChild( compteur( vue.en_attente, 'en attente' ) );
+		zone.appendChild( liste );
+
+		var codes = Object.keys( vue.avertissements || {} );
+		if ( codes.length ) {
+			var h = document.createElement( 'h3' );
+			h.textContent = 'Ce que Felar a signalé';
+			zone.appendChild( h );
+			var phrases = {
+				INSUFFICIENT_STOCK: 'Le stock ne suffisait pas : la vente est enregistrée et le stock régularisé, avec son motif dans le kardex.',
+				UNKNOWN_PRODUCT: 'Un article de la commande n\'existe pas dans Felar : la ligne y est conservée hors catalogue.',
+				TOTAL_ROUNDED: 'Le total recomposé par Felar s\'écarte un peu du vôtre : vérifiez vos arrondis.'
+			};
+			var ul = document.createElement( 'ul' );
+			ul.className = 'felar-cas';
+			codes.forEach( function ( code ) {
+				var li = document.createElement( 'li' );
+				var n = document.createElement( 'span' );
+				n.className = 'felar-cas-nombre';
+				n.textContent = vue.avertissements[ code ] + ' — ';
+				var p = document.createElement( 'span' );
+				p.textContent = phrases[ code ] || code;
+				li.appendChild( n );
+				li.appendChild( p );
+				ul.appendChild( li );
+			} );
+			zone.appendChild( ul );
+		}
+
+		if ( vue.refus && vue.refus.length ) {
+			var titre = document.createElement( 'h3' );
+			titre.textContent = 'Les dernières commandes à regarder';
+			zone.appendChild( titre );
+			var ul2 = document.createElement( 'ul' );
+			ul2.className = 'felar-cas';
+			vue.refus.forEach( function ( r ) {
+				var li = document.createElement( 'li' );
+				var n = document.createElement( 'span' );
+				n.className = 'felar-cas-nombre';
+				n.textContent = 'Commande ' + r.commande + ' — ';
+				var p = document.createElement( 'span' );
+				p.textContent = r.message;
+				li.appendChild( n );
+				li.appendChild( p );
+				ul2.appendChild( li );
+			} );
+			zone.appendChild( ul2 );
+		}
+	}
+
+	function agir( bouton, action, extra, attente ) {
+		bouton.disabled = true;
+		vider( zone );
+		zone.appendChild( message( attente ) );
+		poster( action, extra ).then( function ( reponse ) {
+			bouton.disabled = false;
+			if ( ! reponse.success ) {
+				vider( zone );
+				zone.appendChild( message(
+					reponse.data && reponse.data.message ? reponse.data.message : 'Échec.', 'mal'
+				) );
+				return;
+			}
+			afficher( reponse.data );
+		} );
+	}
+
+	var bascule = document.getElementById( 'felar-cmd-bascule' );
+	if ( bascule ) {
+		bascule.addEventListener( 'click', function () {
+			var allumer = '1' !== bascule.dataset.actif;
+			agir( bascule, 'felar_cmd_actif', { actif: allumer ? '1' : '0' },
+				allumer ? 'Mise en route…' : 'Arrêt…' );
+		} );
+	}
+
+	var reprise = document.getElementById( 'felar-cmd-reprise' );
+	if ( reprise ) {
+		reprise.addEventListener( 'click', function () {
+			agir( reprise, 'felar_cmd_reprise', {}, 'Remise en file…' );
+		} );
+	}
+
+	try {
+		afficher( JSON.parse( zone.dataset.initial ) );
+	} catch ( erreur ) {
+		/* Rien à afficher au chargement. */
+	}
+} )();

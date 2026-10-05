@@ -3,7 +3,7 @@
  * Plugin Name:       Felar Connect pour WooCommerce
  * Plugin URI:        https://felar-crm.com
  * Description:       Branche votre boutique WooCommerce sur Felar : votre site reste votre vitrine, Felar devient votre arrière-boutique — stock, caisse, commandes, clients, factures.
- * Version:           1.1.0
+ * Version:           1.3.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Felar
@@ -18,7 +18,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'FELAR_CONNECT_VERSION', '1.1.0' );
+define( 'FELAR_CONNECT_VERSION', '1.3.0' );
 define( 'FELAR_CONNECT_FILE', __FILE__ );
 define( 'FELAR_CONNECT_DIR', plugin_dir_path( __FILE__ ) );
 define( 'FELAR_CONNECT_URL', plugin_dir_url( __FILE__ ) );
@@ -56,7 +56,11 @@ function felar_connect_demarrer() {
 	require_once FELAR_CONNECT_DIR . 'includes/class-felar-import.php';
 	require_once FELAR_CONNECT_DIR . 'includes/class-felar-references.php';
 	require_once FELAR_CONNECT_DIR . 'includes/class-felar-stock-regles.php';
+	require_once FELAR_CONNECT_DIR . 'includes/class-felar-propagation.php';
 	require_once FELAR_CONNECT_DIR . 'includes/class-felar-stock.php';
+	require_once FELAR_CONNECT_DIR . 'includes/class-felar-commande-convertisseur.php';
+	require_once FELAR_CONNECT_DIR . 'includes/class-felar-commande-lecteur.php';
+	require_once FELAR_CONNECT_DIR . 'includes/class-felar-commandes.php';
 	require_once FELAR_CONNECT_DIR . 'admin/class-felar-admin.php';
 
 	$reglages   = new Felar_Reglages();
@@ -64,15 +68,17 @@ function felar_connect_demarrer() {
 	$analyse    = new Felar_Analyse( $reglages, $lecteur );
 	$import     = new Felar_Import( $reglages, $lecteur );
 	$references = new Felar_References();
-	$stock      = new Felar_Stock( $reglages );
+	$stock      = new Felar_Stock( $reglages, new Felar_Propagation( $reglages ) );
+	$commandes  = new Felar_Commandes( $reglages, new Felar_Commande_Lecteur() );
 
 	// Les tâches de fond se branchent partout, pas seulement dans
 	// l'administration : elles partent d'une requête anonyme.
 	$import->brancher();
 	$stock->brancher();
+	$commandes->brancher();
 
 	if ( is_admin() ) {
-		$admin = new Felar_Admin( $reglages, $analyse, $import, $references, $stock );
+		$admin = new Felar_Admin( $reglages, $analyse, $import, $references, $stock, $commandes );
 		$admin->brancher();
 	}
 }
@@ -119,6 +125,8 @@ register_deactivation_hook(
 		if ( function_exists( 'as_unschedule_all_actions' ) ) {
 			as_unschedule_all_actions( 'felar_connect_import_lot', null, 'felar-connect' );
 			as_unschedule_all_actions( 'felar_connect_stock_passage', null, 'felar-connect' );
+			as_unschedule_all_actions( 'felar_connect_commande', null, 'felar-connect' );
+			as_unschedule_all_actions( 'felar_connect_commande_etat', null, 'felar-connect' );
 		}
 	}
 );

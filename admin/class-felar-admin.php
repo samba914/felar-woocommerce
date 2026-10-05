@@ -43,12 +43,16 @@ final class Felar_Admin {
 	/** @var Felar_Stock */
 	private $stock;
 
-	public function __construct( Felar_Reglages $reglages, Felar_Analyse $analyse, Felar_Import $import, Felar_References $references, Felar_Stock $stock ) {
+	/** @var Felar_Commandes */
+	private $commandes;
+
+	public function __construct( Felar_Reglages $reglages, Felar_Analyse $analyse, Felar_Import $import, Felar_References $references, Felar_Stock $stock, Felar_Commandes $commandes ) {
 		$this->reglages   = $reglages;
 		$this->analyse    = $analyse;
 		$this->import     = $import;
 		$this->references = $references;
 		$this->stock      = $stock;
+		$this->commandes  = $commandes;
 	}
 
 	/** Branche les écrans et les actions. */
@@ -69,6 +73,9 @@ final class Felar_Admin {
 			'felar_stock_actif' => 'basculer_le_stock',
 			'felar_stock_maint' => 'synchroniser_le_stock',
 			'felar_stock_tout'  => 'tout_relire_le_stock',
+			'felar_cmd'         => 'etat_des_commandes',
+			'felar_cmd_actif'   => 'basculer_les_commandes',
+			'felar_cmd_reprise' => 'reprendre_les_commandes',
 		);
 		foreach ( $actions as $crochet => $methode ) {
 			add_action( 'wp_ajax_' . $crochet, array( $this, $methode ) );
@@ -129,8 +136,9 @@ final class Felar_Admin {
 		$analyse    = $this->analyse;
 		$references = $this->references;
 		$stock      = $this->stock;
+		$commandes  = $this->commandes;
 		$onglet     = isset( $_GET['onglet'] ) ? sanitize_key( wp_unslash( $_GET['onglet'] ) ) : 'connexion';
-		if ( ! in_array( $onglet, array( 'connexion', 'import', 'stock', 'journal' ), true ) ) {
+		if ( ! in_array( $onglet, array( 'connexion', 'import', 'stock', 'commandes', 'journal' ), true ) ) {
 			$onglet = 'connexion';
 		}
 
@@ -370,5 +378,31 @@ final class Felar_Admin {
 		$this->verrou();
 		$this->stock->tout_relire();
 		wp_send_json_success( $this->stock->passer() );
+	}
+
+	/** L'état de l'envoi des commandes. */
+	public function etat_des_commandes() {
+		$this->verrou();
+		wp_send_json_success( $this->commandes->etat() );
+	}
+
+	/** Met l'envoi des commandes en route, ou l'arrête. */
+	public function basculer_les_commandes() {
+		$this->verrou();
+		$actif = ! empty( $_POST['actif'] );
+		if ( $actif && ! $this->reglages->branchee() ) {
+			wp_send_json_error( array( 'message' => "Branchez d'abord une clé dans l'onglet Connexion." ) );
+		}
+		$this->commandes->basculer( $actif );
+		wp_send_json_success( $this->commandes->etat() );
+	}
+
+	/** Reprend les commandes récentes, pour celles passées pendant que c'était éteint. */
+	public function reprendre_les_commandes() {
+		$this->verrou();
+		$combien = $this->commandes->reprendre_les_recentes( 25 );
+		$etat    = $this->commandes->etat();
+		$etat['reprises'] = $combien;
+		wp_send_json_success( $etat );
 	}
 }

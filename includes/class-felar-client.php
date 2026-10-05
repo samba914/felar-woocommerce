@@ -164,6 +164,102 @@ final class Felar_Client {
 		return $this->interpreter( $reponse );
 	}
 
+	/**
+	 * Envoie une commande.
+	 *
+	 * Rejouer est <b>sans danger</b> : Felar reconnaît le couple (compte, source,
+	 * identifiant externe) et renvoie la commande déjà enregistrée avec
+	 * `duplicate: true`, jamais une jumelle et jamais une erreur. Un second envoi
+	 * n'est pas une faute, c'est le prix d'une livraison garantie.
+	 *
+	 * @param array $commande Le corps, déjà conforme au contrat.
+	 * @return array
+	 */
+	public function envoyer_commande( array $commande ) {
+		return $this->interpreter(
+			$this->appeler( 'POST', '/orders', wp_json_encode( $commande ), self::DELAI_ECRITURE )
+		);
+	}
+
+	/**
+	 * Annonce la suite d'une commande : réglée, ou annulée.
+	 *
+	 * @param string $externe L'identifiant de la commande chez le marchand.
+	 * @param array  $etat    `status`, et éventuellement `method`, `paidAt`, `amount`.
+	 * @return array
+	 */
+	public function changer_letat( $externe, array $etat ) {
+		return $this->interpreter(
+			$this->appeler(
+				'POST',
+				// `?source=` est facultatif — Felar retrouve la commande sur le seul
+				// identifiant — mais l'envoyer lève toute ambiguïté le jour où le
+				// marchand branche une seconde boutique sur le même compte.
+				'/orders/' . rawurlencode( (string) $externe ) . '/status?source=woocommerce',
+				wp_json_encode( $etat ),
+				self::DELAI_ECRITURE
+			)
+		);
+	}
+
+	/**
+	 * Ce que Felar demande de porter sur la boutique.
+	 *
+	 * Seules les modifications que le marchand a **acceptées** arrivent ici : la
+	 * frontière de propriété donne ces champs à sa boutique, et Felar ne les y
+	 * porte pas sans son accord.
+	 *
+	 * @param int $limite Cent par passage suffisent ; le suivant finira.
+	 * @return array
+	 */
+	public function lire_les_modifications( $limite = 100 ) {
+		return $this->interpreter(
+			$this->appeler(
+				'GET',
+				'/changes?' . http_build_query(
+					array(
+						'source' => 'woocommerce',
+						'limit'  => max( 1, (int) $limite ),
+					)
+				),
+				null,
+				self::DELAI_LECTURE
+			)
+		);
+	}
+
+	/**
+	 * Dit à Felar ce que la boutique a réellement posé.
+	 *
+	 * La valeur renvoyée n'est pas celle qu'il a demandée mais celle qui est
+	 * affichée — un prix arrondi, un intitulé coupé. C'est ce qui coupe la boucle
+	 * d'écho : sans elle, Felar verrait un écart à sa relecture suivante et
+	 * reproposerait la même propagation, indéfiniment.
+	 *
+	 * @param array $accuses Un accusé par modification.
+	 * @return array
+	 */
+	public function accuser_les_modifications( array $accuses ) {
+		if ( empty( $accuses ) ) {
+			return array(
+				'issue'   => 'ok',
+				'code'    => '',
+				'message' => '',
+				'delai'   => 0,
+				'donnees' => array(),
+			);
+		}
+
+		return $this->interpreter(
+			$this->appeler(
+				'POST',
+				'/changes/ack',
+				wp_json_encode( array( 'changes' => array_values( $accuses ) ) ),
+				self::DELAI_ECRITURE
+			)
+		);
+	}
+
 	/** L'adresse complète d'un chemin du contrat. */
 	public function adresse( $chemin ) {
 		return $this->base . Felar_Contrat::CHEMIN . $chemin;

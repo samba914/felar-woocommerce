@@ -1,0 +1,427 @@
+<?php
+/**
+ * Les commandes de la boutique vers Felar.
+ *
+ * <h2>Envoyée dès qu'elle existe, payée ou non</h2>
+ * Attendre le règlement laisserait passer les commandes à payer à la livraison —
+ * la moitié du commerce ici — et Felar ne réserverait le stock que trop tard. La
+ * commande part donc à sa création, et son règlement suit par un second appel.
+ *
+ * <h2>Rien n'est envoyé depuis la requête du client</h2>
+ * Un appel réseau pendant la validation du panier allonge l'attente de l'acheteur,
+ * et une panne de Felar ferait échouer sa commande. L'envoi passe donc par une
+ * tâche de fond : le client voit sa confirmation tout de suite, et la commande
+ * monte dans la minute.
+ *
+ * <h2>Rejouer est sans danger</h2>
+ * Felar reconnaît le couple (compte, source, identifiant) et renvoie la commande
+ * déjà enregistrée plutôt qu'une jumelle. C'est ce qui permet de réessayer après
+ * une coupure sans rien vérifier d'abord — et de brancher deux crochets sur le
+ * même événement sans craindre le doublon.
+ *
+ * @package Felar_Connect
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+final class Felar_Commandes {
+
+	const OPTION = 'felar_connect_commandes';
+	const ACTION = 'felar_connect_commande';
+	const ETAT   = 'felar_connect_commande_etat';
+	const GROUPE = 'felar-connect';
+
+	/** L'identifiant Felar de la commande, et son numéro chez le marchand. */
+	const META_ID        = '_felar_commande_id';
+	const META_REFERENCE = '_felar_commande_reference';
+
+	/** Vingt refus gardés : de quoi comprendre, pas de quoi remplir la base. */
+	const REFUS_MAX = 20;
+
+	/** Trois tentatives sur une panne passagère. */
+	const TENTATIVES_MAX = 3;
+
+	/** @var Felar_Reglages */
+	private $reglages;
+
+	/** @var Felar_Commande_Lecteur */
+	private $lecteur;
+
+	public function __construct( Felar_Reglages $reglages, Felar_Commande_Lecteur $lecteur ) {
+		$this->reglages = $reglages;
+		$this->lecteur  = $lecteur;
+	}
+
+	/** Branche les crochets de WooCommerce et le traitement des tâches. */
+	public function brancher() {
+		add_action( self::ACTION, array( $this, 'envoyer' ), 10, 2 );
+		add_action( self::ETAT, array( $this, 'pousser_letat' ), 10, 3 );
+
+		if ( ! $this->actif() ) {
+			return;
+		}
+
+		add_action( 'woocommerce_new_order', array( $this, 'a_la_creation' ), 20, 1 );
+
+		// Deux crochets pour le règlement, volontairement : `payment_complete` ne
+		// part pas quand le marchand marque une commande payée à la main, et le
+		// changement d'état ne part pas toujours sur les passerelles qui encaissent
+		// sans transition. Les deux ensemble couvrent les deux chemins, et le second
+		// envoi est sans conséquence puisque Felar n'encaisse pas deux fois.
+		add_action( 'woocommerce_payment_complete', array( $this, 'au_reglement' ), 20, 1 );
+		add_action( 'woocommerce_order_status_changed', array( $this, 'au_changement' ), 20, 4 );
+	}
+
+	/** Vrai si le marchand a mis l'envoi en route. */
+	public function actif() {
+		$etat = $this->etat_brut();
+		return ! empty( $etat['actif'] ) && $this->reglages->branchee();
+	}
+
+	/** Une commande vient d'être créée. */
+	public function a_la_creation( $identifiant ) {
+		$this->enfiler( (int) $identifiant );
+	}
+
+	/** Le règlement est arrivé. */
+	public function au_reglement( $identifiant ) {
+		$this->enfiler_un_etat( (int) $identifiant, 'PAID' );
+	}
+
+	/**
+	 * L'état de la commande a changé.
+	 *
+	 * @param int    $identifiant L'identifiant de la commande.
+	 * @param string $avant       L'état précédent.
+	 * @param string $apres       Le nouvel état.
+	 * @param mixed  $commande    L'objet commande.
+	 */
+	public function au_changement( $identifiant, $avant, $apres, $commande = null ) {
+		$identifiant = (int) $identifiant;
+
+		if ( 'cancelled' === $apres || 'failed' === $apres ) {
+			$this->enfiler_un_etat( $identifiant, 'CANCELLED' );
+			return;
+		}
+
+		if ( 'refunded' === $apres ) {
+			// Le remboursement n'est pas pris en charge en version 1, et l'envoyer à
+			// moitié — le montant sans les lignes — donnerait une comptabilité fausse.
+			// On le dit au marchand plutôt que de le taire.
+			$this->retenir_un_refus( $identifiant, 'REMBOURSEMENT',
+				'Le remboursement se traite dans Felar, sur l\'écran de la commande : il décide du sort du stock et de la facture à la fois.' );
+			return;
+		}
+
+		$payes = function_exists( 'wc_get_is_paid_statuses' ) ? (array) wc_get_is_paid_statuses() : array( 'processing', 'completed' );
+		if ( in_array( $apres, $payes, true ) && ! in_array( $avant, $payes, true ) ) {
+			$this->enfiler_un_etat( $identifiant, 'PAID' );
+		}
+	}
+
+	/** Met une commande dans la file. */
+	public function enfiler( $identifiant, $tentative = 0 ) {
+		if ( $identifiant <= 0 || ! function_exists( 'as_enqueue_async_action' ) ) {
+			return;
+		}
+		as_enqueue_async_action( self::ACTION, array( $identifiant, $tentative ), self::GROUPE );
+	}
+
+	/** Met un changement d'état dans la file. */
+	public function enfiler_un_etat( $identifiant, $statut, $tentative = 0 ) {
+		if ( $identifiant <= 0 || ! function_exists( 'as_enqueue_async_action' ) ) {
+			return;
+		}
+		as_enqueue_async_action( self::ETAT, array( $identifiant, $statut, $tentative ), self::GROUPE );
+	}
+
+	/**
+	 * Envoie une commande à Felar.
+	 *
+	 * @param int $identifiant L'identifiant WooCommerce.
+	 * @param int $tentative   Le rang de la tentative.
+	 */
+	public function envoyer( $identifiant, $tentative = 0 ) {
+		$identifiant = (int) $identifiant;
+		$brut        = $this->lecteur->lire( $identifiant );
+
+		if ( null === $brut ) {
+			// La commande a disparu entre la mise en file et le réveil de la tâche.
+			return;
+		}
+
+		$conversion = $this->convertisseur()->convertir( $brut );
+		if ( null === $conversion['payload'] ) {
+			$this->retenir_un_refus(
+				$identifiant,
+				$conversion['refus'],
+				Felar_Commande_Convertisseur::phrase( $conversion['refus'] )
+			);
+			return;
+		}
+
+		$resultat = $this->reglages->client()->envoyer_commande( $conversion['payload'] );
+
+		if ( 'ok' !== $resultat['issue'] ) {
+			$this->rejouer_ou_renoncer( $identifiant, $resultat, $tentative, null );
+			return;
+		}
+
+		$this->retenir_le_lien( $identifiant, $resultat['donnees'] );
+
+		$etat = $this->etat_brut();
+		if ( ! empty( $resultat['donnees']['duplicate'] ) ) {
+			$etat['compteurs']['doublons']++;
+		} else {
+			$etat['compteurs']['envoyees']++;
+		}
+		foreach ( (array) ( isset( $resultat['donnees']['warnings'] ) ? $resultat['donnees']['warnings'] : array() ) as $avertissement ) {
+			$code = isset( $avertissement['code'] ) ? (string) $avertissement['code'] : '';
+			if ( '' !== $code ) {
+				$etat['avertissements'][ $code ] = isset( $etat['avertissements'][ $code ] )
+					? $etat['avertissements'][ $code ] + 1
+					: 1;
+			}
+		}
+		$etat['dernier'] = time();
+		$this->enregistrer( $etat );
+
+		// Les notes de conversion valent d'être dites : une ligne hors catalogue ou
+		// un client sans contact changent ce que le marchand verra dans Felar.
+		foreach ( $conversion['notes'] as $note ) {
+			$this->retenir_un_refus( $identifiant, $note, Felar_Commande_Convertisseur::phrase( $note ), false );
+		}
+	}
+
+	/**
+	 * Annonce la suite d'une commande.
+	 *
+	 * @param int    $identifiant L'identifiant WooCommerce.
+	 * @param string $statut      `PAID` ou `CANCELLED`.
+	 * @param int    $tentative   Le rang de la tentative.
+	 */
+	public function pousser_letat( $identifiant, $statut, $tentative = 0 ) {
+		$identifiant = (int) $identifiant;
+		$brut        = $this->lecteur->lire( $identifiant );
+		if ( null === $brut ) {
+			return;
+		}
+
+		$corps = array( 'status' => $statut );
+		if ( 'PAID' === $statut ) {
+			$paiement = $brut['paiement'];
+			if ( '' !== $paiement['methode'] ) {
+				$corps['method'] = $paiement['methode'];
+			}
+			if ( '' !== $paiement['paye_le'] ) {
+				$corps['paidAt'] = gmdate( 'Y-m-d\TH:i:s\Z', strtotime( $paiement['paye_le'] ) );
+			}
+			$corps['amount'] = Felar_Contrat::montant( $brut['total'], $this->devise() );
+		}
+
+		$resultat = $this->reglages->client()->changer_letat( (string) $identifiant, $corps );
+
+		if ( 'ok' === $resultat['issue'] ) {
+			$etat = $this->etat_brut();
+			$etat['compteurs']['etats']++;
+			$etat['dernier'] = time();
+			$this->enregistrer( $etat );
+			return;
+		}
+
+		if ( 'fatal' === $resultat['issue'] && 'ORDER_NOT_FOUND' === $resultat['code'] ) {
+			// L'état précède la commande : cela arrive quand le marchand active
+			// l'envoi entre les deux. On envoie la commande, et son état suivra.
+			$this->enfiler( $identifiant );
+			return;
+		}
+
+		$this->rejouer_ou_renoncer( $identifiant, $resultat, $tentative, $statut );
+	}
+
+	/**
+	 * Décide s'il faut réessayer.
+	 *
+	 * Une panne de réseau se rejoue ; une clé révoquée ou une commande refusée ne se
+	 * rejouera jamais avec succès, et insister remplirait le journal sans rien
+	 * réparer.
+	 */
+	private function rejouer_ou_renoncer( $identifiant, array $resultat, $tentative, $statut ) {
+		$rejouable = in_array( $resultat['issue'], array( 'reseau', 'attendre' ), true );
+
+		if ( $rejouable && $tentative < self::TENTATIVES_MAX ) {
+			$attente = 'attendre' === $resultat['issue'] ? (int) $resultat['delai'] : 60 * ( $tentative + 1 );
+			if ( function_exists( 'as_schedule_single_action' ) ) {
+				as_schedule_single_action(
+					time() + $attente,
+					null === $statut ? self::ACTION : self::ETAT,
+					null === $statut
+						? array( $identifiant, $tentative + 1 )
+						: array( $identifiant, $statut, $tentative + 1 ),
+					self::GROUPE
+				);
+			}
+			return;
+		}
+
+		$this->retenir_un_refus( $identifiant, $resultat['code'], $resultat['message'] );
+	}
+
+	/**
+	 * Retient l'identifiant et le numéro que Felar a donnés.
+	 *
+	 * Le numéro — `CMD-00142` — est celui que le marchand lit sur ses écrans et sur
+	 * sa facture. L'afficher dans l'administration de WooCommerce est le seul moyen
+	 * pour lui de retrouver l'une depuis l'autre sans chercher.
+	 */
+	private function retenir_le_lien( $identifiant, array $reponse ) {
+		$commande = wc_get_order( $identifiant );
+		if ( ! $commande ) {
+			return;
+		}
+
+		if ( ! empty( $reponse['felarId'] ) ) {
+			$commande->update_meta_data( self::META_ID, sanitize_text_field( $reponse['felarId'] ) );
+		}
+		if ( ! empty( $reponse['reference'] ) ) {
+			$commande->update_meta_data( self::META_REFERENCE, sanitize_text_field( $reponse['reference'] ) );
+		}
+		$commande->save();
+	}
+
+	/**
+	 * Garde un refus, ou une simple remarque, pour l'écran.
+	 *
+	 * @param int    $identifiant La commande concernée.
+	 * @param string $code        Le code.
+	 * @param string $message     La phrase.
+	 * @param bool   $compter     Faux pour une remarque sur une commande acceptée.
+	 */
+	private function retenir_un_refus( $identifiant, $code, $message, $compter = true ) {
+		$etat = $this->etat_brut();
+
+		if ( $compter ) {
+			$etat['compteurs']['refusees']++;
+			Felar_Journal::noter( 'Commande ' . $identifiant . ' non transmise : ' . $message, 'error' );
+		}
+
+		array_unshift(
+			$etat['refus'],
+			array(
+				'commande' => (int) $identifiant,
+				'code'     => (string) $code,
+				'message'  => (string) $message,
+				'bloquant' => (bool) $compter,
+				'quand'    => time(),
+			)
+		);
+		$etat['refus']   = array_slice( $etat['refus'], 0, self::REFUS_MAX );
+		$etat['dernier'] = time();
+		$this->enregistrer( $etat );
+	}
+
+	/** Le convertisseur, monté sur la devise du compte. */
+	private function convertisseur() {
+		return new Felar_Commande_Convertisseur( $this->devise() );
+	}
+
+	/** La devise de Felar, celle du compte — la seule qu'il accepte. */
+	private function devise() {
+		$devise = (string) $this->reglages->lire( 'devise' );
+		return '' !== $devise ? $devise : (string) $this->reglages->boutique()['devise'];
+	}
+
+	/** Met l'envoi en route, ou l'arrête. */
+	public function basculer( $actif ) {
+		$etat          = $this->etat_brut();
+		$etat['actif'] = (bool) $actif;
+		$this->enregistrer( $etat );
+		Felar_Journal::noter( $actif ? 'Envoi des commandes activé.' : 'Envoi des commandes arrêté.' );
+	}
+
+	/**
+	 * Met en file les commandes récentes.
+	 *
+	 * Sert au marchand qui active l'envoi après coup : les commandes passées
+	 * pendant que c'était éteint n'ont aucune raison de rester dehors. Rejouer est
+	 * sans danger, donc en reprendre quelques-unes de trop ne coûte rien.
+	 *
+	 * @param int $combien Nombre de commandes à reprendre.
+	 * @return int Le nombre mis en file.
+	 */
+	public function reprendre_les_recentes( $combien = 25 ) {
+		$commandes = wc_get_orders(
+			array(
+				'limit'   => (int) $combien,
+				'orderby' => 'date',
+				'order'   => 'DESC',
+				'return'  => 'ids',
+			)
+		);
+
+		foreach ( (array) $commandes as $identifiant ) {
+			$this->enfiler( (int) $identifiant );
+		}
+
+		return count( (array) $commandes );
+	}
+
+	/** L'état brut, complété par ses valeurs par défaut. */
+	public function etat_brut() {
+		$defauts = array(
+			'actif'          => false,
+			'dernier'        => 0,
+			'compteurs'      => array(
+				'envoyees' => 0,
+				'doublons' => 0,
+				'refusees' => 0,
+				'etats'    => 0,
+			),
+			'avertissements' => array(),
+			'refus'          => array(),
+		);
+
+		$etat = get_option( self::OPTION, array() );
+		return array_merge( $defauts, is_array( $etat ) ? $etat : array() );
+	}
+
+	/** Ce que l'écran affiche. */
+	public function etat() {
+		$etat = $this->etat_brut();
+
+		return array(
+			'actif'          => (bool) $etat['actif'],
+			'dernier'        => (int) $etat['dernier'],
+			'compteurs'      => $etat['compteurs'],
+			'avertissements' => $etat['avertissements'],
+			'refus'          => $etat['refus'],
+			'en_attente'     => $this->taches_en_attente(),
+		);
+	}
+
+	/** Le nombre de commandes qui attendent leur tour. */
+	private function taches_en_attente() {
+		if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
+			return 0;
+		}
+		$taches = as_get_scheduled_actions(
+			array(
+				'hook'     => self::ACTION,
+				'group'    => self::GROUPE,
+				'status'   => 'pending',
+				'per_page' => 50,
+			),
+			'ids'
+		);
+		return count( (array) $taches );
+	}
+
+	private function enregistrer( array $etat ) {
+		update_option( self::OPTION, $etat, false );
+	}
+
+	/** Oublie tout, à la désinstallation. */
+	public static function oublier() {
+		delete_option( self::OPTION );
+	}
+}

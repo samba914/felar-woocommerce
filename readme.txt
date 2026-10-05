@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.0
 WC tested up to: 9.9
-Stable tag: 1.1.0
+Stable tag: 1.3.0
 License: Proprietary
 
 Votre site reste votre vitrine. Felar devient votre arrière-boutique : stock, caisse, commandes, clients, factures.
@@ -44,9 +44,13 @@ Felar ne touche pas à cet argent.
    article, l'un au comptoir, l'autre à l'écran.
 5. Vous activez la **synchronisation du stock** : toutes les dix minutes, les
    quantités de Felar descendent sur votre site.
+6. Vous activez l'**envoi des commandes** : chaque vente arrive dans Felar dès
+   qu'elle est passée, et en ressortent le stock, le chiffre, le client et la
+   facture.
 
-Les commandes et la propagation d'un prix corrigé dans Felar arrivent dans les
-versions suivantes.
+7. Quand vous corrigez un prix, un intitulé ou une description **dans Felar**, il
+   vous demande s'il faut le porter ici. Vos photos, vos prix d'achat et vos
+   marges, eux, ne partent jamais vers votre site.
 
 == Installation ==
 
@@ -65,6 +69,13 @@ versions suivantes.
 Felar vérifie tout ce que vous envoyez et **n'enregistre rien**. C'est fait pour
 éprouver le branchement sans salir votre comptabilité. Passer en production
 consiste à coller une clé `ck_live_`, rien d'autre.
+
+= J'ai remboursé un client, Felar ne le voit pas =
+
+Un remboursement décide de deux choses à la fois : ce que devient le stock et ce
+que devient la facture. L'enregistrer à moitié vous donnerait une comptabilité
+fausse. Faites-le dans Felar, sur l'écran de la commande, où vous voyez ce que
+vous rendez.
 
 = Mon site affiche moins de stock que Felar =
 
@@ -120,6 +131,17 @@ Révoquez-la dans Felar : c'est immédiat et sans délai de grâce. Générez-en
 autre et collez-la ici. Votre catalogue déjà monté n'est pas touché.
 
 == Changelog ==
+
+= 1.3.0 =
+* Les corrections faites dans Felar — prix, intitulé, description — sont posées
+  ici après votre accord, jamais sans.
+* La valeur réellement affichée est renvoyée à Felar, ce qui empêche la
+  propagation de tourner en rond.
+
+= 1.2.0 =
+* Les commandes montent dans Felar dès qu'elles sont passées, payées ou non.
+* Le règlement et l'annulation suivent ; le numéro de commande Felar est retenu.
+* Écran *Commandes* : ce qui est monté, et ce qui demande un regard.
 
 = 1.1.0 =
 * Synchronisation du stock, de Felar vers la boutique, toutes les dix minutes.

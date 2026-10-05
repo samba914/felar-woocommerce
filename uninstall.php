@@ -21,6 +21,8 @@ delete_option( 'felar_connect_journal' );
 delete_option( 'felar_connect_analyse' );
 delete_option( 'felar_connect_import' );
 delete_option( 'felar_connect_stock' );
+delete_option( 'felar_connect_commandes' );
+delete_option( 'felar_connect_propagation' );
 
 global $wpdb;
 

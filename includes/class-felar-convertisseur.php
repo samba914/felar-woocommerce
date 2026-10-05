@@ -680,22 +680,9 @@ final class Felar_Convertisseur {
 		return $ligne;
 	}
 
-	/**
-	 * Le montant, en chaîne pour ne pas laisser un flottant arrondir un prix.
-	 *
-	 * `24500.00` passé en `float` puis rendu par `json_encode` peut ressortir en
-	 * `24499.999999999996` selon la configuration de PHP. Une chaîne décimale ne
-	 * laisse aucune place à cette surprise, et Felar la lit sans difficulté.
-	 */
+	/** Le montant du contrat ; le raisonnement est dans {@see Felar_Contrat::montant()}. */
 	private function montant( $prix ) {
-		$valeur = number_format( (float) $prix, 4, '.', '' );
-		if ( false !== strpos( $valeur, '.' ) ) {
-			$valeur = rtrim( rtrim( $valeur, '0' ), '.' );
-		}
-		return array(
-			'value'    => '' === $valeur ? '0' : $valeur,
-			'currency' => $this->devise,
-		);
+		return Felar_Contrat::montant( $prix, $this->devise );
 	}
 
 	/**

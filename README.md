@@ -16,11 +16,13 @@ ensemble : ce document-là est le seul lien, et il fait foi.
 
 | Fait | Pas encore |
 |---|---|
-| Appairage et test de la connexion (`GET /ping`) | Commandes Woo vers Felar (lot 4) |
-| Rapport d'analyse du catalogue, lu **avant** d'importer | Propagation d'un prix corrigé dans Felar (lot 5) |
-| Import du catalogue, déclinaisons comprises (`POST /products/batch`) | Notification `stock.changed` (lot 6) |
+| Appairage et test de la connexion (`GET /ping`) | Notification `stock.changed` (lot 6) |
+| Rapport d'analyse du catalogue, lu **avant** d'importer | Remboursements (ils se traitent dans Felar) |
+| Import du catalogue, déclinaisons comprises (`POST /products/batch`) | |
 | Retour des références fabriquées par Felar dans les UGS WooCommerce | |
-| **Stock de Felar vers la boutique** (`GET /products?since=`) | |
+| Stock de Felar vers la boutique (`GET /products?since=`) | |
+| Commandes vers Felar, et leurs suites (`POST /orders`, `/status`) | |
+| **Corrections de Felar portées ici**, sur accord (`GET /changes`) | |
 
 ---
 
@@ -82,6 +84,10 @@ un vrai serveur.
 | `includes/class-felar-references.php` | Les UGS fabriquées par Felar, réécrites chez Woo |
 | `includes/class-felar-stock-regles.php` | Que faire d'une ligne du flux — et quand ne rien faire |
 | `includes/class-felar-stock.php` | La lecture périodique du stock, curseur compris |
+| `includes/class-felar-commande-convertisseur.php` | Une commande Woo → le contrat. Les calculs d'argent |
+| `includes/class-felar-commande-lecteur.php` | Lit une commande par l'API objet, HPOS compris |
+| `includes/class-felar-commandes.php` | Les crochets, la file, les suites |
+| `includes/class-felar-propagation.php` | Les corrections de Felar, posées ici et accusées |
 | `admin/` | L'écran, en trois onglets |
 
 ---
@@ -137,6 +143,65 @@ Deux conséquences dans le code :
 
 **Ce passage n'écrit que le stock.** Le flux porte aussi le prix et l'intitulé ; les
 reprendre écraserait la page que le marchand a écrite et que Google indexe.
+
+---
+
+## Les commandes : trois pièges d'argent
+
+**Le prix unitaire est net de toute remise.** `get_total()` d'une ligne est le
+montant après remises — y compris un code promotionnel portant sur la commande
+entière — là où `get_subtotal()` est celui d'avant. C'est le premier qu'il faut :
+Felar ne répartit aucune remise globale, puisqu'il faudrait deviner sur quelles
+lignes et à quel taux, et le total du marchand ne tomberait plus juste.
+
+**Tout part hors taxe, quoi qu'en dise le catalogue.** WooCommerce range les
+totaux de ligne d'une commande toujours hors taxe, même quand le marchand saisit
+ses prix TTC : ce réglage parle de la saisie du catalogue, pas de la commande. On
+envoie du HT et on le déclare.
+
+**Le taux se déduit de la commande, pas du produit.** Celui du catalogue a pu
+changer depuis ; celui qui compte est celui qui a été facturé, c'est-à-dire le
+rapport entre la taxe de la ligne et son montant.
+
+Et une quatrième précaution, côté serveur cette fois : Felar recompose la somme des
+lignes et refuse au-delà de **5 % d'écart** avec le total annoncé. Ce n'est pas de
+la méfiance — c'est le seul garde-fou contre une boutique tenue en **centimes** là
+où le compte est en francs, une panne où rien n'est « invalide » et où le chiffre
+d'affaires serait multiplié par cent.
+
+### Pourquoi rien n'est envoyé depuis la requête du client
+
+Un appel réseau pendant la validation du panier allonge l'attente de l'acheteur, et
+une panne de Felar ferait échouer sa commande. L'envoi passe par une tâche de fond.
+
+---
+
+## La propagation, et la boucle qu'elle évite
+
+Felar ne pousse jamais de lui-même : il met de côté, demande au marchand, et
+seules les corrections **acceptées** descendent jusqu'ici. Trois champs
+seulement — prix, intitulé, description — jamais les photos ni les marges.
+
+L'accusé de réception porte **la valeur réellement posée**, pas celle demandée.
+C'est le point qui compte, et ce n'est pas une politesse : WooCommerce arrondit à
+deux décimales, convertit en hors taxe si le marchand saisit ainsi, et tronque un
+intitulé trop long. Si Felar retenait sa propre valeur, sa relecture suivante du
+catalogue y verrait un écart, croirait à une modification du site, et reproposerait
+la même propagation. Indéfiniment.
+
+On relit donc le prix tel que la boutique l'affiche après écriture
+(`wc_get_price_including_tax`), et c'est lui qu'on renvoie.
+
+Une modification qu'on n'a pas pu poser part avec son `error` : elle **reste**
+dans la file de Felar, et le marchand la voit encore. Une page supprimée ne doit
+pas effacer sa décision.
+
+### Pourquoi deux crochets pour le règlement
+
+`woocommerce_payment_complete` ne part pas quand le marchand marque une commande
+payée à la main ; le changement d'état ne part pas toujours sur les passerelles qui
+encaissent sans transition. Les deux ensemble couvrent les deux chemins — et le
+second envoi est sans conséquence, puisque Felar n'encaisse pas deux fois.
 
 ---
 
