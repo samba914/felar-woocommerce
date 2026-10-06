@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 7.4
 WC requires at least: 7.0
 WC tested up to: 9.9
-Stable tag: 1.5.0
+Stable tag: 1.6.0
 License: Proprietary
 
 Votre site reste votre vitrine. Felar devient votre arrière-boutique : stock, caisse, commandes, clients, factures.
@@ -161,6 +161,19 @@ Révoquez-la dans Felar : c'est immédiat et sans délai de grâce. Générez-en
 autre et collez-la ici. Votre catalogue déjà monté n'est pas touché.
 
 == Changelog ==
+
+= 1.6.0 =
+* Un refus affiché dans l'onglet Commandes disparaît tout seul dès que la commande
+  repasse, et un bouton « Oublier ces refus » permet de repartir d'un écran propre.
+* Correction : une panne réseau pendant un remboursement renvoyait la commande au
+  lieu du remboursement.
+* Correction : un remboursement total partait deux fois.
+* Correction : une commande passée directement de « en attente » à « terminée » —
+  le paiement à la livraison — n'était jamais signalée comme payée à Felar.
+* Correction : une erreur de propagation pouvait bloquer la synchronisation du
+  stock sur les mêmes pages, indéfiniment.
+* L'écran disait encore que les remboursements ne partaient pas : c'était faux
+  depuis la version 1.5.0, et le suivre rendait le stock en double.
 
 = 1.5.0 =
 * Les remboursements, partiels comme totaux, remontent dans Felar avec leurs
