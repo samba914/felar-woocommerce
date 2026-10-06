@@ -65,7 +65,15 @@ final class Felar_Propagation {
 		$refus   = array();
 
 		foreach ( $attendues as $modification ) {
-			$verdict = $this->appliquer( $modification );
+			try {
+				$verdict = $this->appliquer( $modification );
+			} catch ( Exception $echec ) {
+				// WooCommerce refuse parfois d'enregistrer une fiche — une UGS en
+				// doublon, une extension tierce qui s'y oppose. Une correction qui ne
+				// passe pas ne doit pas faire perdre les suivantes, ni empêcher
+				// d'accuser réception de celles qui sont passées.
+				$verdict = $this->echec( $echec->getMessage() );
+			}
 
 			if ( null === $verdict['erreur'] ) {
 				$posees++;

@@ -42,6 +42,9 @@ require_once $felar_racine . 'interface-felar-transport.php';
 require_once $felar_racine . 'class-felar-client.php';
 require_once $felar_racine . 'class-felar-stock-regles.php';
 require_once $felar_racine . 'class-felar-commande-convertisseur.php';
+// Chargée pour sa seule règle pure : celle qui décide si l'écran du marchand peut
+// redevenir propre. Le reste de la classe parle à WordPress et n'est pas touché ici.
+require_once $felar_racine . 'class-felar-commandes.php';
 require_once $felar_racine . 'class-felar-propagation.php';
 require_once __DIR__ . '/class-transport-factice.php';
 require_once __DIR__ . '/class-produits.php';

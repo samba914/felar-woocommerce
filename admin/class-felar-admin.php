@@ -76,6 +76,7 @@ final class Felar_Admin {
 			'felar_cmd'         => 'etat_des_commandes',
 			'felar_cmd_actif'   => 'basculer_les_commandes',
 			'felar_cmd_reprise' => 'reprendre_les_commandes',
+			'felar_cmd_refus'   => 'oublier_les_refus',
 		);
 		foreach ( $actions as $crochet => $methode ) {
 			add_action( 'wp_ajax_' . $crochet, array( $this, $methode ) );
@@ -404,5 +405,19 @@ final class Felar_Admin {
 		$etat    = $this->commandes->etat();
 		$etat['reprises'] = $combien;
 		wp_send_json_success( $etat );
+	}
+
+	/**
+	 * Oublie les refus affichés.
+	 *
+	 * Le marchand vient de corriger ce qui bloquait, et il a besoin d'un écran
+	 * propre pour voir si sa correction a pris. Sans ce bouton, un refus passager
+	 * restait affiché à vie — et un écran d'alerte qui ne redevient jamais propre
+	 * cesse d'être lu.
+	 */
+	public function oublier_les_refus() {
+		$this->verrou();
+		$this->commandes->oublier_les_refus();
+		wp_send_json_success( $this->commandes->etat() );
 	}
 }

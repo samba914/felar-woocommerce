@@ -832,6 +832,18 @@
 				ul2.appendChild( li );
 			} );
 			zone.appendChild( ul2 );
+
+			// Le marchand vient peut-être de corriger ce qui bloquait : sans ce
+			// bouton, un refus passager resterait affiché à vie, et un écran
+			// d'alerte qui ne redevient jamais propre cesse d'être lu.
+			var effacer = document.createElement( 'button' );
+			effacer.type = 'button';
+			effacer.className = 'button';
+			effacer.textContent = 'Oublier ces refus';
+			effacer.addEventListener( 'click', function () {
+				agir( effacer, 'felar_cmd_refus', {}, 'Nettoyage…' );
+			} );
+			zone.appendChild( effacer );
 		}
 	}
 

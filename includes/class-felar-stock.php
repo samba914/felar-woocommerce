@@ -163,7 +163,18 @@ final class Felar_Stock {
 				// Le flux est épuisé : c'est le bon moment pour vider la file des
 				// modifications que le marchand a acceptées. Un seul rythme pour les
 				// deux sens, et un interrupteur de moins à comprendre.
-				$this->propagation->passer();
+				//
+				// Sous garde, et ce n'est pas de la prudence d'usage : une exception
+				// venue d'ici — un produit que WooCommerce refuse d'enregistrer —
+				// emporterait le passage de stock AVANT que son curseur ne soit
+				// retenu. On relirait alors indéfiniment les mêmes pages, et le stock
+				// cesserait de descendre sans que rien ne l'explique.
+				try {
+					$this->propagation->passer();
+				} catch ( Exception $echec ) {
+					Felar_Journal::noter(
+						'Propagation interrompue : ' . $echec->getMessage(), 'error' );
+				}
 				// Le flux est épuisé : le curseur retombe, et c'est l'instant figé
 				// qui devient le point de départ du prochain passage.
 				$etat['since']   = '' !== $etat['fige'] ? $etat['fige'] : $etat['since'];

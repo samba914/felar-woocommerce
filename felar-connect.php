@@ -3,7 +3,7 @@
  * Plugin Name:       Felar Connect pour WooCommerce
  * Plugin URI:        https://felar-crm.com
  * Description:       Branche votre boutique WooCommerce sur Felar : votre site reste votre vitrine, Felar devient votre arrière-boutique — stock, caisse, commandes, clients, factures.
- * Version:           1.5.0
+ * Version:           1.6.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Felar
@@ -18,7 +18,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'FELAR_CONNECT_VERSION', '1.5.0' );
+define( 'FELAR_CONNECT_VERSION', '1.6.0' );
 define( 'FELAR_CONNECT_FILE', __FILE__ );
 define( 'FELAR_CONNECT_DIR', plugin_dir_path( __FILE__ ) );
 define( 'FELAR_CONNECT_URL', plugin_dir_url( __FILE__ ) );

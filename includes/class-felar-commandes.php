@@ -111,26 +111,33 @@ final class Felar_Commandes {
 			return;
 		}
 
-		if ( 'completed' === $apres ) {
-			// La marchandise est partie. Sans cette annonce, la reservation posee a
-			// l entree de la commande tiendrait pour toujours : le disponible du
-			// marchand baisserait d une unite a chaque vente web et ne remonterait
-			// jamais. C est la panne la plus lente et la plus deroutante du
-			// connecteur, et elle ne se voit qu au bout de quelques semaines.
-			$this->enfiler_un_etat( $identifiant, 'DELIVERED' );
-			return;
-		}
-
 		if ( 'refunded' === $apres ) {
-			// Un remboursement total emprunte le même chemin qu'un partiel : ce sont
-			// ses LIGNES qui comptent, jamais son montant.
-			$this->enfiler_un_remboursement( $identifiant );
+			// Rien à faire ici, et c'est voulu. WooCommerce fait passer la commande à
+			// « remboursée » APRÈS avoir créé le remboursement, qui a déjà déclenché
+			// `woocommerce_order_refunded`. L'enfiler une seconde fois renverrait les
+			// mêmes lignes : Felar les refuserait pour dépassement du livré, et le
+			// marchand lirait un échec sur une opération parfaitement réussie.
 			return;
 		}
 
+		// Le règlement AVANT la livraison, et les deux sur le même passage : une
+		// commande qui va directement de « en attente » à « terminée » — le cas d'un
+		// paiement à la livraison encaissé au moment de la remise — est payée ET
+		// livrée. Traiter « terminée » à part, comme on le faisait, la marquait
+		// livrée sans jamais la marquer payée : elle restait impayée dans Felar, et
+		// son chiffre d'affaires manquait à la caisse.
 		$payes = function_exists( 'wc_get_is_paid_statuses' ) ? (array) wc_get_is_paid_statuses() : array( 'processing', 'completed' );
 		if ( in_array( $apres, $payes, true ) && ! in_array( $avant, $payes, true ) ) {
 			$this->enfiler_un_etat( $identifiant, 'PAID' );
+		}
+
+		if ( 'completed' === $apres ) {
+			// La marchandise est partie. Sans cette annonce, la réservation posée à
+			// l'entrée de la commande tiendrait pour toujours : le disponible du
+			// marchand baisserait d'une unité à chaque vente web et ne remonterait
+			// jamais. C'est la panne la plus lente de ce connecteur, et elle ne se
+			// voit qu'au bout de quelques semaines.
+			$this->enfiler_un_etat( $identifiant, 'DELIVERED' );
 		}
 	}
 
@@ -190,11 +197,13 @@ final class Felar_Commandes {
 		);
 
 		if ( 'ok' !== $resultat['issue'] ) {
-			$this->rejouer_ou_renoncer( $identifiant, $resultat, $tentative, null );
+			$this->rejouer_ou_renoncer( $identifiant, $resultat, $tentative,
+				self::REMBOURSEMENT, $remboursement );
 			return;
 		}
 
 		$etat = $this->etat_brut();
+		$this->oublier_le_refus( $etat, $identifiant );
 		$etat['compteurs']['etats']++;
 		$etat['dernier'] = time();
 		$this->enregistrer( $etat );
@@ -284,13 +293,14 @@ final class Felar_Commandes {
 		$resultat = $this->reglages->client()->envoyer_commande( $conversion['payload'] );
 
 		if ( 'ok' !== $resultat['issue'] ) {
-			$this->rejouer_ou_renoncer( $identifiant, $resultat, $tentative, null );
+			$this->rejouer_ou_renoncer( $identifiant, $resultat, $tentative, self::ACTION );
 			return;
 		}
 
 		$this->retenir_le_lien( $identifiant, $resultat['donnees'] );
 
 		$etat = $this->etat_brut();
+		$this->oublier_le_refus( $etat, $identifiant );
 		if ( ! empty( $resultat['donnees']['duplicate'] ) ) {
 			$etat['compteurs']['doublons']++;
 		} else {
@@ -344,6 +354,7 @@ final class Felar_Commandes {
 
 		if ( 'ok' === $resultat['issue'] ) {
 			$etat = $this->etat_brut();
+			$this->oublier_le_refus( $etat, $identifiant );
 			$etat['compteurs']['etats']++;
 			$etat['dernier'] = time();
 			$this->enregistrer( $etat );
@@ -357,7 +368,7 @@ final class Felar_Commandes {
 			return;
 		}
 
-		$this->rejouer_ou_renoncer( $identifiant, $resultat, $tentative, $statut );
+		$this->rejouer_ou_renoncer( $identifiant, $resultat, $tentative, self::ETAT, $statut );
 	}
 
 	/**
@@ -367,20 +378,26 @@ final class Felar_Commandes {
 	 * rejouera jamais avec succès, et insister remplirait le journal sans rien
 	 * réparer.
 	 */
-	private function rejouer_ou_renoncer( $identifiant, array $resultat, $tentative, $statut ) {
+	private function rejouer_ou_renoncer( $identifiant, array $resultat, $tentative, $quoi, $extra = null ) {
 		$rejouable = in_array( $resultat['issue'], array( 'reseau', 'attendre' ), true );
 
 		if ( $rejouable && $tentative < self::TENTATIVES_MAX ) {
 			$attente = 'attendre' === $resultat['issue'] ? (int) $resultat['delai'] : 60 * ( $tentative + 1 );
+
+			// La tâche rejouée doit être CELLE QUI A ÉCHOUÉ. Déduire le crochet d'un
+			// paramètre nul — comme on le faisait — rejouait l'envoi de la commande
+			// quand c'était un remboursement qui venait d'échouer : la demande du
+			// marchand se perdait, et une commande déjà connue repartait à sa place.
+			if ( self::ETAT === $quoi ) {
+				$arguments = array( $identifiant, $extra, $tentative + 1 );
+			} elseif ( self::REMBOURSEMENT === $quoi ) {
+				$arguments = array( $identifiant, (int) $extra, $tentative + 1 );
+			} else {
+				$arguments = array( $identifiant, $tentative + 1 );
+			}
+
 			if ( function_exists( 'as_schedule_single_action' ) ) {
-				as_schedule_single_action(
-					time() + $attente,
-					null === $statut ? self::ACTION : self::ETAT,
-					null === $statut
-						? array( $identifiant, $tentative + 1 )
-						: array( $identifiant, $statut, $tentative + 1 ),
-					self::GROUPE
-				);
+				as_schedule_single_action( time() + $attente, $quoi, $arguments, self::GROUPE );
 			}
 			return;
 		}
@@ -418,6 +435,73 @@ final class Felar_Commandes {
 	 * @param string $message     La phrase.
 	 * @param bool   $compter     Faux pour une remarque sur une commande acceptée.
 	 */
+	/**
+	 * Efface le refus retenu sur une commande qui vient d'aboutir.
+	 *
+	 * <h4>Pourquoi un refus doit pouvoir disparaître</h4>
+	 * Sans cela, une panne passagère — clé révoquée une heure, Felar indisponible,
+	 * une commande refusée puis corrigée — laissait un compteur rouge et une ligne
+	 * d'alerte <b>à vie</b> sur l'écran du marchand. Un écran qui ne redevient jamais
+	 * propre cesse d'être lu, et c'est précisément celui dont le rôle est de dire
+	 * quand quelque chose ne va pas.
+	 *
+	 * @param array $etat        L'état en cours, modifié sur place.
+	 * @param int   $identifiant La commande qui vient de passer.
+	 */
+	private function oublier_le_refus( array &$etat, $identifiant ) {
+		$etat = self::sans_les_refus_de( $etat, $identifiant );
+	}
+
+	/**
+	 * L'état débarrassé des refus bloquants portant sur cette commande.
+	 *
+	 * Pure et publique pour être éprouvable sans WordPress : c'est la règle qui
+	 * décide si l'écran du marchand peut redevenir propre, et elle mérite des cas.
+	 *
+	 * @param array $etat        L'état en cours.
+	 * @param int   $identifiant La commande qui vient de passer.
+	 * @return array L'état nettoyé.
+	 */
+	public static function sans_les_refus_de( array $etat, $identifiant ) {
+		$identifiant = (int) $identifiant;
+		$restants    = array();
+		$effaces     = 0;
+
+		foreach ( isset( $etat['refus'] ) ? (array) $etat['refus'] : array() as $refus ) {
+			// Seuls les refus BLOQUANTS s'effacent. Une simple remarque — « cet
+			// article n'était pas encore importé » — décrit la commande telle
+			// qu'elle est entrée, et reste vraie après coup.
+			if ( (int) $refus['commande'] === $identifiant && ! empty( $refus['bloquant'] ) ) {
+				$effaces++;
+				continue;
+			}
+			$restants[] = $refus;
+		}
+
+		$etat['refus'] = $restants;
+		if ( $effaces > 0 ) {
+			// Le compteur suit, sans jamais passer sous zéro : il décrit ce qui
+			// reste à regarder, pas une histoire.
+			$etat['compteurs']['refusees'] = max( 0, (int) $etat['compteurs']['refusees'] - $effaces );
+		}
+		return $etat;
+	}
+
+	/**
+	 * Oublie les refus retenus, sur demande du marchand.
+	 *
+	 * Il vient de corriger ce qui bloquait — une clé, un réglage de devise, un
+	 * article manquant — et il a besoin de repartir d'un écran propre pour voir si
+	 * sa correction a pris. Lui demander de désinstaller l'extension pour cela
+	 * serait absurde.
+	 */
+	public function oublier_les_refus() {
+		$etat                          = $this->etat_brut();
+		$etat['refus']                 = array();
+		$etat['compteurs']['refusees'] = 0;
+		$this->enregistrer( $etat );
+	}
+
 	private function retenir_un_refus( $identifiant, $code, $message, $compter = true ) {
 		$etat = $this->etat_brut();
 
