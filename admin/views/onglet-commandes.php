@@ -50,9 +50,27 @@ $felar_cmd = $commandes->etat();
 		</p>
 
 		<p class="description">
-			<strong>Le remboursement ne part pas.</strong> Il décide du sort du stock
-			<em>et</em> de la facture ; l'enregistrer à moitié donnerait une
-			comptabilité fausse. Traitez-le dans Felar, sur l'écran de la commande.
+			<strong>Vos remboursements montent aussi</strong>, dès que vous cochez les
+			articles rendus dans WooCommerce : la quantité revient en stock dans Felar,
+			et un avoir peut être produit sur la facture. Partiel ou total, c'est la
+			même chose.
+		</p>
+
+		<p class="description">
+			Deux réserves, et elles ont la même raison — un remboursement décide du
+			sort de la <em>marchandise</em> autant que de l'argent.
+			<strong>Un remboursement sans article ne part pas</strong> : un montant seul
+			ne dit pas ce qu'il faut remettre en stock, et deviner fausserait votre
+			inventaire. Et <strong>un remboursement passe entier ou pas du tout</strong> :
+			si Felar refuse une seule ligne, aucune n'est enregistrée, et le motif
+			s'affiche ci-dessous. Un remboursement à moitié enregistré ferait diverger
+			votre caisse et votre inventaire sans que rien ne vous le dise.
+		</p>
+
+		<p class="description">
+			<strong>Passez vos commandes à « Terminée »</strong> quand la marchandise
+			part : c'est ce qui dénoue la réservation dans Felar, et c'est aussi ce qui
+			autorise un remboursement — on ne rend pas ce qui n'est jamais parti.
 		</p>
 	</div>
 
